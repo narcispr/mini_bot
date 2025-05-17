@@ -109,8 +109,9 @@ class MiniBotNode(Node):
         v_d = v + a_v * self.dt
         w_d = w + a_w * self.dt
         
-        with self.robot_lock:
-            self.robot.move((v_d, w_d))
+        self.last_cmd_vel = (v_d, w_d)
+
+        
 
         # -------------------------------
         # 2. Aplica umbrals mínims (evita moviments petits)
@@ -120,7 +121,9 @@ class MiniBotNode(Node):
         if abs(w_d) < self.min_w:
             w_d = 0.0
         
-        self.last_cmd_vel = (v_d, w_d)
+        with self.robot_lock:
+            self.robot.move((v_d, w_d))
+            
         print(f"[Feasible desired vel] v_d: {v_d}, w_d: {w_d}")
 
         # -------------------------------
