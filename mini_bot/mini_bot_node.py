@@ -4,6 +4,8 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Range
 from std_msgs.msg import Header
+from rclpy.duration import Duration
+
 
 import serial
 import threading
@@ -18,7 +20,35 @@ class MiniBotNode(Node):
     def __init__(self):
         super().__init__('mono_bot_node')
 
-        self.robot = DifferentialWheel(dt=0.1, length=0.124, radius=0.0337, max_v=0.3, max_w=1.57)
+        # Paràmetres físics del robot
+        self.max_v = 0.25      # m/s
+        self.max_w = 4.5       # rad/s
+        self.min_v = 0.05      # m/s
+        self.min_w = 1.5       # rad/s
+        self.max_a_v = 0.2    # m/s²
+        self.max_a_w = 3.0     # rad/s²
+        self.dt = 0.1          # s
+
+        # Paràmetres de conversió wl/wr -> PWM
+        self.pwm_lut = {
+            'left':  {'min_pwm': 120, 'min_w': 1.0, 'max_pwm': 255, 'max_w': 6.0},
+            'right': {'min_pwm': 100, 'min_w': 1.0, 'max_pwm': 255, 'max_w': 6.0},
+        }
+
+        # Wheel PWM command
+        self.left_pwm = 0
+        self.right_pwm = 0
+
+        # Last desired speed command
+        self.cmd_vel = (0.0, 0.0)
+        self.last_cmd_vel = (0.0, 0.0)
+        self.cmd_vel_stamp = self.get_clock().now()
+        
+        # Differential drive class
+        self.robot = DifferentialWheel(dt=0.1, length=0.124, radius=0.0337, max_v=self.max_v, max_w=self.max_w)
+        self.robot_lock = threading.Lock()
+
+        # Serial port for Arduino communications
         self.serial_lock = threading.Lock()
         self.ser = serial.Serial("/dev/ttyACM0", 9600, timeout=1)
 
@@ -28,37 +58,92 @@ class MiniBotNode(Node):
         self.range_pub = self.create_publisher(Range, '/range', 10)
 
         # Timers
-        self.create_timer(0.1, self.publish_odometry)
+        self.create_timer(self.dt, self.loop)
 
         # Threads
         threading.Thread(target=self.read_sensor_loop, daemon=True).start()
 
-    def cmd_vel_callback(self, msg: Twist):
-        print("cmd_vel_callback")
-        v = msg.linear.x
-        w = msg.angular.z
-        print(f"v: {v}, w: {w}")
+    def __compute_pwm__(self, w, side):
+            lut = self.pwm_lut[side]
+            min_pwm, min_w = lut['min_pwm'], lut['min_w']
+            max_pwm, max_w = lut['max_pwm'], lut['max_w']
+            w_abs = abs(w)
 
-        # Calcula velocitats individuals
-        wl, wr = self.robot.get_inv_velocity((v, w))
-        print(f"wl: {wl}, wr: {wr}")
-        # Escala a PWM segons el teu mètode
-        left_pwm = wl * self.robot.radius * 155 / self.robot.max_v
-        right_pwm = wr * self.robot.radius * 155 / self.robot.max_v
-        left_pwm = int(left_pwm + np.sign(left_pwm)*100)
-        right_pwm = int(right_pwm + np.sign(right_pwm)*100)
-        np.clip(left_pwm, -255, 255)
-        np.clip(right_pwm, -255, 255)
-        print(f"left_pwm: {left_pwm}, right_pwm: {right_pwm}")
+            if w_abs < min_w:
+                if w_abs != 0.0:
+                    print("Warning! Allowing too small speeds!")
+                return 0
+
+            pwm = min_pwm + (w_abs - min_w) * (max_pwm - min_pwm) / (max_w - min_w)
+            pwm = np.clip(pwm, min_pwm, max_pwm)
+            return int(np.sign(w) * pwm)
+
+    def cmd_vel_callback(self, msg: Twist):
+        # Entrada original
+        v_d = msg.linear.x
+        w_d = -1.0*msg.angular.z
+        print(f"-------->  [INPUT] v_d: {v_d}, w_d: {w_d}")
+        self.cmd_vel = (v_d, w_d)
+        self.cmd_vel_stamp = self.get_clock().now()
+        self.__compute_feasible_speed__(v_d, w_d)
+       
+    def __compute_feasible_speed__(self, v_d, w_d):   
+        print(f"[Desired] v_d: {v_d}, w_d: {w_d}")
+       
+        # -------------------------------
+        # 1. Prioritat a la rotació
+        # -------------------------------
+        w_ratio = min(abs(w_d) / self.max_w, 1.0)
+        v_d = np.clip(v_d, -self.max_v * (1.0 - w_ratio), self.max_v * (1.0 - w_ratio))
+        w_d = np.clip(w_d, -self.max_w, self.max_w)
+
+       
+        # -------------------------------
+        # 2. Limitació dynàmica
+        # -------------------------------
+        v, w = self.last_cmd_vel
+        a_v = (v_d - v) / self.dt
+        a_w = (w_d - w) / self.dt
+        a_v = np.clip(a_v, -self.max_a_v, self.max_a_v)
+        a_w = np.clip(a_w, -self.max_a_w, self.max_a_w)
+        v_d = v + a_v * self.dt
+        w_d = w + a_w * self.dt
         
-        # Envia per sèrie
+        with self.robot_lock:
+            self.robot.move((v_d, w_d))
+
+        # -------------------------------
+        # 2. Aplica umbrals mínims (evita moviments petits)
+        # -------------------------------
+        if abs(v_d) < self.min_v:
+            v_d = 0.0
+        if abs(w_d) < self.min_w:
+            w_d = 0.0
+        
+        self.last_cmd_vel = (v_d, w_d)
+        print(f"[Feasible desired vel] v_d: {v_d}, w_d: {w_d}")
+
+        # -------------------------------
+        # 4. Obté wl i wr
+        # -------------------------------
+        wl, wr = self.robot.get_inv_velocity((v_d, w_d))
+        print(f"[Wheel speeds] wl: {wl:.2f}, wr: {wr:.2f}")
+
+        # -------------------------------
+        # 5. Transforma a PWM per cada roda
+        # -------------------------------
+        self.left_pwm = self.__compute_pwm__(wl, 'left')
+        self.right_pwm = self.__compute_pwm__(wr, 'right')
+        print(f"[PWM] left: {self.left_pwm}, right: {self.right_pwm}")
+
+
+    def send_motors_message(self, left_pwm, right_pwm):
+        # print(f"left_pwm: {left_pwm}, right_pwm: {right_pwm}")
+        
+        # Envia per sèriellll
         msg_bytes = coms.build_pwm_message(left_pwm, right_pwm)
         with self.serial_lock:
             self.ser.write(msg_bytes)
-
-        # Mou el robot internament (per odometria)
-        self.robot.move((v, w))
-
 
     def read_sensor_loop(self):
         while rclpy.ok():
@@ -73,6 +158,19 @@ class MiniBotNode(Node):
 
             time.sleep(0.05)
 
+    def loop(self):
+        # Send message to motor
+        self.send_motors_message(self.left_pwm, self.right_pwm)
+        
+        # Check if last motor command is older than 1s
+        if self.cmd_vel_stamp < (self.get_clock().now() - Duration(seconds=1.0)):
+            self.cmd_vel = (0.0, 0.0) 
+
+        self.__compute_feasible_speed__(self.cmd_vel[0], self.cmd_vel[1])
+          
+        # Publish odometry
+        self.publish_odometry()
+
     def publish_range(self, dist_cm):
         msg = Range()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -85,8 +183,9 @@ class MiniBotNode(Node):
         self.range_pub.publish(msg)
 
     def publish_odometry(self):
-        x, y, theta = self.robot.get_pose()
-        v, w = self.robot.get_velocity()
+        with self.robot_lock:
+            x, y, theta = self.robot.get_pose()
+            v, w = self.robot.get_velocity()
         # print(f"pose: ({x}, {y}, {theta}), vel: ({v}, {w})")
 
         msg = Odometry()
