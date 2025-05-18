@@ -1,15 +1,21 @@
 #include "AFMotor.h"
+#include <NewPing.h>
 
+// Communication Protocol
 #define START_BYTE 0xAA
 #define END_BYTE   0x55
 #define ID_SENSOR_RANGE 0x01
 #define ID_CMD_RPM 0x10
 
-// Range sensor
-const int Trigger = A0;
-const int Echo = A1;  
+// Ultrasonic sensor
+#define MAX_DIST  300
+#define TRIG_PIN  A0
+#define ECHO_PIN  A1  
 uint8_t range[2];
+uint16_t dist = 0;
+NewPing sonar(TRIG_PIN, ECHO_PIN, MAX_DIST);
 
+// Motors
 AF_DCMotor motor_left(1);
 AF_DCMotor motor_right(2);
 
@@ -18,6 +24,10 @@ int motor_left_state = RELEASE;
 int motor_right_pwm = 0;
 int motor_right_state = RELEASE;
 int motor_watch_dog = 0;
+
+// Others
+#define LOOP_PERIOD_MS  50
+unsigned long last_loop_time = 0;
 
 void sendMessage(uint8_t id, uint8_t* data, uint8_t len) {
   Serial.write(START_BYTE);
@@ -91,45 +101,41 @@ void writeMotors() {
   motor_right.setSpeed(motor_right_pwm);
 }
 
-long readRange() {
-  long t; //timepo que demora en llegar el eco
- 
-  digitalWrite(Trigger, HIGH);
-  delayMicroseconds(10);          //Enviamos un pulso de 10us
-  digitalWrite(Trigger, LOW);
-  
-  t = pulseIn(Echo, HIGH, 17700); //obtenemos el ancho del pulso (rang màxim 3m)
-  return t/59;             //escalamos el tiempo a una distancia en cm
-}
+/*void ecoCheck() {
+  if (sonar.check_timer()) {
+    dist = sonar.ping_result / US_ROUNDTRIP_CM;
+  }
+}*/
+
 
 void setup() {
   //Init Serial
   Serial.begin(9600);
   // Init Motors
   writeMotors();
-  // Setup range sensor
-  pinMode(Trigger, OUTPUT); //pin como salida
-  pinMode(Echo, INPUT);  //pin como entrada
-  digitalWrite(Trigger, LOW);//Inicializamos el pin con 0
 }
 
 void loop() {
-  // Serial.println("Hola!");
-  receiveMessage();
-  writeMotors();
-  delay(50); 
-  uint16_t r = readRange();
-  range[0] = r & 0xFF;        // byte baix (LSB)
-  range[1] = (r >> 8) & 0xFF; // byte alt (MSB)
-  sendMessage(ID_SENSOR_RANGE, range, 2);
-  
-  if (motor_watch_dog <= 0) {
-    motor_left_pwm = 0;
-    motor_left_state = RELEASE;
-    motor_right_pwm = 0;
-    motor_right_state = RELEASE;
-  }
-  else {
-    motor_watch_dog = motor_watch_dog - 1;
-  }
+  unsigned long now = millis();
+
+  if (now - last_loop_time >= (LOOP_PERIOD_MS)) {
+    last_loop_time = now;
+    // sonar.ping_timer(ecoCheck);
+    unsigned int dist = sonar.ping_cm();
+    range[0] = dist & 0xFF;        // byte baix (LSB)
+    range[1] = (dist >> 8) & 0xFF; // byte alt (MSB)
+    sendMessage(ID_SENSOR_RANGE, range, 2);
+    
+    receiveMessage();
+    writeMotors();
+    if (motor_watch_dog <= 0) {
+      motor_left_pwm = 0;
+      motor_left_state = RELEASE;
+      motor_right_pwm = 0;
+      motor_right_state = RELEASE;
+    }
+    else {
+      motor_watch_dog = motor_watch_dog - 1;
+    }
+  } 
 }
