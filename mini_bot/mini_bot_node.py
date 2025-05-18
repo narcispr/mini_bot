@@ -3,10 +3,14 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Range
+from sensor_msgs.msg import PointCloud2, PointField
+import sensor_msgs_py.point_cloud2 as pc2
 from std_msgs.msg import Header
 from rclpy.duration import Duration
+from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import TransformStamped
 
-
+import math
 import serial
 import threading
 import time
@@ -53,9 +57,11 @@ class MiniBotNode(Node):
         self.ser = serial.Serial("/dev/ttyACM0", 9600, timeout=1)
 
         # ROS interfaces
+        self.tf_broadcaster = TransformBroadcaster(self)
         self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self.range_pub = self.create_publisher(Range, '/range', 10)
+        self.pc_pub = self.create_publisher(PointCloud2, '/range_pointcloud', 10)
 
         # Timers
         self.create_timer(self.dt, self.loop)
@@ -82,13 +88,13 @@ class MiniBotNode(Node):
         # Entrada original
         v_d = msg.linear.x
         w_d = -1.0*msg.angular.z
-        print(f"-------->  [INPUT] v_d: {v_d}, w_d: {w_d}")
+        # print(f"-------->  [INPUT] v_d: {v_d}, w_d: {w_d}")
         self.cmd_vel = (v_d, w_d)
         self.cmd_vel_stamp = self.get_clock().now()
         self.__compute_feasible_speed__(v_d, w_d)
        
     def __compute_feasible_speed__(self, v_d, w_d):   
-        print(f"[Desired] v_d: {v_d}, w_d: {w_d}")
+        # print(f"[Desired] v_d: {v_d}, w_d: {w_d}")
        
         # -------------------------------
         # 1. Prioritat a la rotació
@@ -112,7 +118,6 @@ class MiniBotNode(Node):
         self.last_cmd_vel = (v_d, w_d)
 
         
-
         # -------------------------------
         # 2. Aplica umbrals mínims (evita moviments petits)
         # -------------------------------
@@ -123,21 +128,21 @@ class MiniBotNode(Node):
         
         with self.robot_lock:
             self.robot.move((v_d, w_d))
-            
-        print(f"[Feasible desired vel] v_d: {v_d}, w_d: {w_d}")
+
+        # print(f"[Feasible desired vel] v_d: {v_d}, w_d: {w_d}")
 
         # -------------------------------
         # 4. Obté wl i wr
         # -------------------------------
         wl, wr = self.robot.get_inv_velocity((v_d, w_d))
-        print(f"[Wheel speeds] wl: {wl:.2f}, wr: {wr:.2f}")
+        # print(f"[Wheel speeds] wl: {wl:.2f}, wr: {wr:.2f}")
 
         # -------------------------------
         # 5. Transforma a PWM per cada roda
         # -------------------------------
         self.left_pwm = self.__compute_pwm__(wl, 'left')
         self.right_pwm = self.__compute_pwm__(wr, 'right')
-        print(f"[PWM] left: {self.left_pwm}, right: {self.right_pwm}")
+        # print(f"[PWM] left: {self.left_pwm}, right: {self.right_pwm}")
 
 
     def send_motors_message(self, left_pwm, right_pwm):
@@ -159,7 +164,7 @@ class MiniBotNode(Node):
                     value = payload[0] | (payload[1] << 8)
                     self.publish_range(value)
 
-            time.sleep(0.05)
+            time.sleep(0.025)
 
     def loop(self):
         # Send message to motor
@@ -175,24 +180,52 @@ class MiniBotNode(Node):
         self.publish_odometry()
 
     def publish_range(self, dist_cm):
-        msg = Range()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "range_link"
-        msg.radiation_type = Range.ULTRASOUND
-        msg.field_of_view = 0.2
-        msg.min_range = 0.02
-        msg.max_range = 3.0
-        msg.range = dist_cm / 100.0
-        self.range_pub.publish(msg)
+        now = self.get_clock().now().to_msg()
+
+        # --- 1. Publish the original Range message
+        range_msg = Range()
+        range_msg.header.stamp = now
+        range_msg.header.frame_id = "range_link"
+        range_msg.radiation_type = Range.ULTRASOUND
+        range_msg.field_of_view = 0.349  # ~20º in radians
+        range_msg.min_range = 0.02
+        range_msg.max_range = 3.0
+        range_msg.range = dist_cm / 100.0
+        self.range_pub.publish(range_msg)
+
+        # --- 2. Simulate a 20º fan of points at given distance
+        distance_m = dist_cm / 100.0
+        if distance_m < range_msg.min_range or distance_m > range_msg.max_range:
+            return  # don't publish if out of bounds
+
+        num_points = 21
+        fov_deg = 20.0
+        fov_rad = math.radians(fov_deg)
+        angle_min = -fov_rad / 2
+        angle_max = fov_rad / 2
+
+        points = []
+        for i in range(num_points):
+            angle = angle_min + i * (angle_max - angle_min) / (num_points - 1)
+            x = distance_m * math.cos(angle)
+            y = distance_m * math.sin(angle)
+            z = 0.0
+            points.append([x, y, z])
+
+        header = Header()
+        header.stamp = now
+        header.frame_id = "range_link"
+
+        cloud_msg = pc2.create_cloud_xyz32(header, points)
+        self.pc_pub.publish(cloud_msg)
 
     def publish_odometry(self):
         with self.robot_lock:
             x, y, theta = self.robot.get_pose()
             v, w = self.robot.get_velocity()
-        # print(f"pose: ({x}, {y}, {theta}), vel: ({v}, {w})")
 
+        # ---------------- Odometry Message ----------------
         msg = Odometry()
-        msg.header = Header()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'odom'
         msg.child_frame_id = 'base_link'
@@ -200,16 +233,33 @@ class MiniBotNode(Node):
         msg.pose.pose.position.x = float(x)
         msg.pose.pose.position.y = float(y)
         msg.pose.pose.position.z = 0.0
-        
+
         msg.pose.pose.orientation.x = 0.0
         msg.pose.pose.orientation.y = 0.0
-        msg.pose.pose.orientation.z = np.sin(theta / 2.0)
-        msg.pose.pose.orientation.w = np.cos(theta / 2.0)
+        msg.pose.pose.orientation.z = float(np.sin(theta / 2.0))
+        msg.pose.pose.orientation.w = float(np.cos(theta / 2.0))
 
         msg.twist.twist.linear.x = float(v)
         msg.twist.twist.angular.z = float(w)
 
         self.odom_pub.publish(msg)
+
+        # ---------------- TF: odom -> base_link ----------------
+        tf_msg = TransformStamped()
+        tf_msg.header.stamp = msg.header.stamp
+        tf_msg.header.frame_id = 'odom'
+        tf_msg.child_frame_id = 'base_link'
+
+        tf_msg.transform.translation.x = float(x)
+        tf_msg.transform.translation.y = float(y)
+        tf_msg.transform.translation.z = 0.0
+
+        tf_msg.transform.rotation.x = 0.0
+        tf_msg.transform.rotation.y = 0.0
+        tf_msg.transform.rotation.z = float(np.sin(theta / 2.0))
+        tf_msg.transform.rotation.w = float(np.cos(theta / 2.0))
+
+        self.tf_broadcaster.sendTransform(tf_msg)
 
 
 def main(args=None):
