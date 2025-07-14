@@ -5,6 +5,7 @@
 #define START_BYTE 0xAA
 #define END_BYTE   0x55
 #define ID_SENSOR_RANGE 0x01
+#define ID_ENCODERS 0x02
 #define ID_CMD_RPM 0x10
 
 // Ultrasonic sensor
@@ -24,6 +25,17 @@ int motor_left_state = RELEASE;
 int motor_right_pwm = 0;
 int motor_right_state = RELEASE;
 int motor_watch_dog = 0;
+
+
+//Encoders
+uint8_t rpms[2];
+volatile byte pulses_left;
+volatile byte pulses_right;
+unsigned long last_encoders_time;
+#define PULSE_PER_TURN 20
+#define ENCODER_LEFT A2
+#define ENCODER_RIGHT A3
+
 
 // Others
 #define LOOP_PERIOD_MS  50
@@ -101,6 +113,15 @@ void writeMotors() {
   motor_right.setSpeed(motor_right_pwm);
 }
 
+void count_left(){
+  pulses_left++;
+}
+
+void count_right(){
+  pulses_right++;
+}
+
+
 /*void ecoCheck() {
   if (sonar.check_timer()) {
     dist = sonar.ping_result / US_ROUNDTRIP_CM;
@@ -111,8 +132,18 @@ void writeMotors() {
 void setup() {
   //Init Serial
   Serial.begin(9600);
+  
   // Init Motors
   writeMotors();
+  
+  // Init encoders
+  pulses_left = 0;
+  pulses_right = 0;
+  last_encoders_time = millis();
+  pinMode(ENCODER_LEFT, INPUT);
+  pinMode(ENCODER_RIGHT, INPUT);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT), count_left, FALLING);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT), count_right, FALLING);
 }
 
 void loop() {
@@ -137,5 +168,16 @@ void loop() {
     else {
       motor_watch_dog = motor_watch_dog - 1;
     }
+
+    // Read Encoders
+    detachInterrupt(digitalPinToInterrupt(ENCODER_LEFT));
+    detachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT));
+    rpms[0] = (60*LOOP_PERIOD_MS/PULSE_PER_TURN)/(now - last_loop_time) * pulses_left;
+    rpms[1] = (60*LOOP_PERIOD_MS/PULSE_PER_TURN)/(now - last_loop_time) * pulses_right;
+    pulses_left = 0;
+    pulses_right = 0;
+    sendMessage(ID_ENCODERS, rpms, 2);
+    attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT), count_left, FALLING);
+    attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT), count_right, FALLING);
   } 
 }
