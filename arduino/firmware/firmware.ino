@@ -28,11 +28,9 @@ int motor_watch_dog = 0;
 
 
 //Encoders
-uint8_t rpms[2];
+uint8_t pulses[2];
 volatile byte pulses_left;
 volatile byte pulses_right;
-unsigned long last_encoders_time;
-#define PULSE_PER_TURN 20
 #define ENCODER_LEFT A2
 #define ENCODER_RIGHT A3
 
@@ -139,7 +137,6 @@ void setup() {
   // Init encoders
   pulses_left = 0;
   pulses_right = 0;
-  last_encoders_time = millis();
   pinMode(ENCODER_LEFT, INPUT);
   pinMode(ENCODER_RIGHT, INPUT);
   attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT), count_left, FALLING);
@@ -172,11 +169,11 @@ void loop() {
     // Read Encoders
     detachInterrupt(digitalPinToInterrupt(ENCODER_LEFT));
     detachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT));
-    rpms[0] = (60*LOOP_PERIOD_MS/PULSE_PER_TURN)/(now - last_loop_time) * pulses_left;
-    rpms[1] = (60*LOOP_PERIOD_MS/PULSE_PER_TURN)/(now - last_loop_time) * pulses_right;
+    pulses[0] = pulses_left;
+    pulses[1] = pulses_right;
     pulses_left = 0;
     pulses_right = 0;
-    sendMessage(ID_ENCODERS, rpms, 2);
+    sendMessage(ID_ENCODERS, pulses, 2);
     attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT), count_left, FALLING);
     attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT), count_right, FALLING);
   } 

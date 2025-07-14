@@ -163,6 +163,10 @@ class MiniBotNode(Node):
                 if msg_id == coms.ID_SENSOR_RANGE and len(payload) == 2:
                     value = payload[0] | (payload[1] << 8)
                     self.publish_range(value)
+                if msg_id == coms.ID_ENCODERS and len(payload) == 2:
+                    rpms_left = (60*100/20)/50*payload[0]
+                    rpms_right = (60*100/20)/50*payload[1]
+                    print(f"RPMs left: {rpms_left}, RPMs right: {rpms_right}")
 
             time.sleep(0.025)
 

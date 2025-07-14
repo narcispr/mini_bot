@@ -6,6 +6,7 @@ START_BYTE = 0xAA
 END_BYTE = 0x55
 ID_CMD_RPM = 0x10
 ID_SENSOR_RANGE = 0x01
+ID_ENCODERS = 0x02
 
 serial_lock = threading.Lock()  # mutex pel port sèrie
 
