@@ -26,14 +26,14 @@ int motor_right_pwm = 0;
 int motor_right_state = RELEASE;
 int motor_watch_dog = 0;
 
-
 //Encoders
-uint8_t pulses[2];
-volatile byte pulses_left;
-volatile byte pulses_right;
 #define ENCODER_LEFT A2
 #define ENCODER_RIGHT A3
-
+volatile byte pulses_left;
+volatile byte pulses_right;
+bool prev_left_state = HIGH;
+bool prev_right_state = HIGH;
+uint8_t pulses[2];
 
 // Others
 #define LOOP_PERIOD_MS  50
@@ -111,21 +111,6 @@ void writeMotors() {
   motor_right.setSpeed(motor_right_pwm);
 }
 
-void count_left(){
-  pulses_left++;
-}
-
-void count_right(){
-  pulses_right++;
-}
-
-
-/*void ecoCheck() {
-  if (sonar.check_timer()) {
-    dist = sonar.ping_result / US_ROUNDTRIP_CM;
-  }
-}*/
-
 
 void setup() {
   //Init Serial
@@ -139,21 +124,28 @@ void setup() {
   pulses_right = 0;
   pinMode(ENCODER_LEFT, INPUT);
   pinMode(ENCODER_RIGHT, INPUT);
-  attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT), count_left, FALLING);
-  attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT), count_right, FALLING);
 }
 
 void loop() {
   unsigned long now = millis();
 
+  // At every 50 ms:
   if (now - last_loop_time >= (LOOP_PERIOD_MS)) {
+    // read range sensor
     last_loop_time = now;
-    // sonar.ping_timer(ecoCheck);
     unsigned int dist = sonar.ping_cm();
     range[0] = dist & 0xFF;        // byte baix (LSB)
     range[1] = (dist >> 8) & 0xFF; // byte alt (MSB)
     sendMessage(ID_SENSOR_RANGE, range, 2);
     
+    // Send Encoder Pulses
+    pulses[0] = pulses_left;
+    pulses[1] = pulses_right;
+    pulses_left = 0;
+    pulses_right = 0;
+    sendMessage(ID_ENCODERS, pulses, 2);
+    
+    // Process motor commands
     receiveMessage();
     writeMotors();
     if (motor_watch_dog <= 0) {
@@ -165,16 +157,18 @@ void loop() {
     else {
       motor_watch_dog = motor_watch_dog - 1;
     }
-
-    // Read Encoders
-    detachInterrupt(digitalPinToInterrupt(ENCODER_LEFT));
-    detachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT));
-    pulses[0] = pulses_left;
-    pulses[1] = pulses_right;
-    pulses_left = 0;
-    pulses_right = 0;
-    sendMessage(ID_ENCODERS, pulses, 2);
-    attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT), count_left, FALLING);
-    attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT), count_right, FALLING);
   } 
+
+  // At Every iteration: Read encoder pulses bu polling
+  bool current_left_state = digitalRead(ENCODER_LEFT);
+  bool current_right_state = digitalRead(ENCODER_RIGHT);
+
+  if (prev_left_state == HIGH && current_left_state == LOW) {
+    pulses_left++;
+  }
+  if (prev_right_state == HIGH && current_right_state == LOW) {
+    pulses_right++;
+  }
+  prev_left_state = current_left_state;
+  prev_right_state = current_right_state;
 }
