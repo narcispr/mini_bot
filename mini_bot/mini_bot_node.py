@@ -17,12 +17,13 @@ import time
 import numpy as np
 
 from mini_bot.utils.differential_drive import DifferentialWheel
+from sensor_msgs.msg import JointState
 import mini_bot.utils.bot_comms as coms
 
 
 class MiniBotNode(Node):
     def __init__(self):
-        super().__init__('mono_bot_node')
+        super().__init__('mini_bot_node')
 
         # Paràmetres físics del robot
         self.max_v = 0.25      # m/s
@@ -48,6 +49,12 @@ class MiniBotNode(Node):
         self.last_cmd_vel = (0.0, 0.0)
         self.cmd_vel_stamp = self.get_clock().now()
         
+        # Last encoder pulses
+        self.pulses_window = 10 # 20 samples at 20Hz -> 0.5s
+        self.pulses_per_revolution = 20
+        self.all_pulses = np.zeros((2, self.pulses_window), dtype=np.int8)
+        self.pulses_idx = 0
+
         # Differential drive class
         self.robot = DifferentialWheel(dt=0.1, length=0.124, radius=0.0337, max_v=self.max_v, max_w=self.max_w)
         self.robot_lock = threading.Lock()
@@ -62,6 +69,7 @@ class MiniBotNode(Node):
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self.range_pub = self.create_publisher(Range, '/range', 10)
         self.pc_pub = self.create_publisher(PointCloud2, '/range_pointcloud', 10)
+        self.joint_state_pub = self.create_publisher(JointState, '/joint_states', 10)
 
         # Timers
         self.create_timer(self.dt, self.loop)
@@ -164,10 +172,11 @@ class MiniBotNode(Node):
                     value = payload[0] | (payload[1] << 8)
                     self.publish_range(value)
                 if msg_id == coms.ID_ENCODERS and len(payload) == 2:
-                    rpms_left = (60*100/20)/50*payload[0]
-                    rpms_right = (60*100/20)/50*payload[1]
-                    print(f"RPMs left: {rpms_left}, RPMs right: {rpms_right}")
-
+                    self.all_pulses[0, self.pulses_idx] = payload[0]
+                    self.all_pulses[1, self.pulses_idx] = payload[1]
+                    self.pulses_idx = (self.pulses_idx + 1) % self.pulses_window
+                    self.publish_joint_state()
+            # Sleep to avoid busy waiting
             time.sleep(0.025)
 
     def loop(self):
@@ -182,6 +191,22 @@ class MiniBotNode(Node):
           
         # Publish odometry
         self.publish_odometry()
+
+    def publish_joint_state(self):
+        # Publish joint state velocities (rad/s) to /joint_states
+        # Calculate RPMs
+        rpm_left = np.sum(self.all_pulses[0]) * 120.0 / self.pulses_per_revolution
+        rpm_right = np.sum(self.all_pulses[1]) * 120.0 / self.pulses_per_revolution
+
+        # Convert RPM to rad/s: rad/s = RPM * 2*pi / 60
+        vel_left = rpm_left * 2 * np.pi / 60.0
+        vel_right = rpm_right * 2 * np.pi / 60.0
+
+        joint_state = JointState()
+        joint_state.header.stamp = self.get_clock().now().to_msg()
+        joint_state.name = ['left_wheel_joint', 'right_wheel_joint']
+        joint_state.velocity = [vel_left, vel_right]
+        self.joint_state_pub.publish(joint_state)
 
     def publish_range(self, dist_cm):
         now = self.get_clock().now().to_msg()
