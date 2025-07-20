@@ -6,7 +6,8 @@ START_BYTE = 0xAA
 END_BYTE = 0x55
 ID_CMD_RPM = 0x10
 ID_SENSOR_RANGE = 0x01
-ID_ENCODERS = 0x02
+ID_SENSOR_ENCODERS = 0x02
+ID_SENSOR_COMPASS = 0x03
 
 serial_lock = threading.Lock()  # mutex pel port sèrie
 
@@ -87,7 +88,7 @@ def write_thread(ser):
         try:
             left = int(input("RPM esquerra (-255 a 255): "))
             right = int(input("RPM dreta (-255 a 255): "))
-            msg = build_message(left, right)
+            msg = build_pwm_message(left, right)
             with serial_lock:
                 ser.write(msg)
             print(f"[Enviat] {list(msg)}\n")

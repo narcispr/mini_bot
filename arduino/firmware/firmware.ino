@@ -1,12 +1,23 @@
 #include "AFMotor.h"
 #include <NewPing.h>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_HMC5883_U.h>
 
 // Communication Protocol
 #define START_BYTE 0xAA
 #define END_BYTE   0x55
 #define ID_SENSOR_RANGE 0x01
-#define ID_ENCODERS 0x02
+#define ID_SENSOR_ENCODERS 0x02
+#define ID_SENSOR_COMPASS 0x03
 #define ID_CMD_RPM 0x10
+
+// Crear l'objecte del sensor
+Adafruit_HMC5883_Unified compass = Adafruit_HMC5883_Unified(12345);
+uint8_t angle[2];
+// CONNECT the compass to the I2C bus
+// SCL --> A5
+// SDA --> A4
 
 // Ultrasonic sensor
 #define MAX_DIST  300
@@ -38,6 +49,13 @@ uint8_t pulses[2];
 // Others
 #define LOOP_PERIOD_MS  50
 unsigned long last_loop_time = 0;
+
+// Divideix un valor de 16 o 32 bits en un array de bytes
+void splitToBytes(uint32_t value, uint8_t* buffer, uint8_t num_bytes) {
+  for (uint8_t i = 0; i < num_bytes; i++) {
+    buffer[i] = (value >> (8 * i)) & 0xFF;
+  }
+}
 
 void sendMessage(uint8_t id, uint8_t* data, uint8_t len) {
   Serial.write(START_BYTE);
@@ -111,7 +129,6 @@ void writeMotors() {
   motor_right.setSpeed(motor_right_pwm);
 }
 
-
 void setup() {
   //Init Serial
   Serial.begin(9600);
@@ -124,6 +141,16 @@ void setup() {
   pulses_right = 0;
   pinMode(ENCODER_LEFT, INPUT);
   pinMode(ENCODER_RIGHT, INPUT);
+
+  // Init compass
+  Wire.begin();
+
+  // Inicialitzar el sensor
+  if (!compass.begin()) {
+    splitToBytes(0xFFFF, angle, 2); 
+    sendMessage(ID_SENSOR_COMPASS, angle, 2); // Envia un valor d'angle que no pot ser...
+    while (1); // Espera indefinida si no es pot inicialitzar
+  } 
 }
 
 void loop() {
@@ -134,8 +161,7 @@ void loop() {
     // read range sensor
     last_loop_time = now;
     unsigned int dist = sonar.ping_cm();
-    range[0] = dist & 0xFF;        // byte baix (LSB)
-    range[1] = (dist >> 8) & 0xFF; // byte alt (MSB)
+    splitToBytes(dist, range, 2);
     sendMessage(ID_SENSOR_RANGE, range, 2);
     
     // Send Encoder Pulses
@@ -143,7 +169,7 @@ void loop() {
     pulses[1] = pulses_right;
     pulses_left = 0;
     pulses_right = 0;
-    sendMessage(ID_ENCODERS, pulses, 2);
+    sendMessage(ID_SENSOR_ENCODERS, pulses, 2);
     
     // Process motor commands
     receiveMessage();
@@ -157,6 +183,18 @@ void loop() {
     else {
       motor_watch_dog = motor_watch_dog - 1;
     }
+
+    // Read compass
+    sensors_event_t event;
+    compass.getEvent(&event);
+    if (event.magnetic.x == 0 && event.magnetic.y == 0 && event.magnetic.z == 0) {
+      splitToBytes(0xFFFF, angle, 2); // Envia un valor d'angle que no pot ser...
+    } else {
+      int16_t heading = atan2(event.magnetic.y, event.magnetic.x) * 180 / PI; // Convert to degrees
+      if (heading < 0) heading += 360; // Normalize to 0-359
+      splitToBytes(heading, angle, 2);
+    }
+    sendMessage(ID_SENSOR_COMPASS, angle, 2);
   } 
 
   // At Every iteration: Read encoder pulses bu polling
