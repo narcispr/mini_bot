@@ -25,6 +25,7 @@ class ControllerNode(Node):
         self.declare_parameter('w_pid.ki', 0.1)
         self.declare_parameter('w_pid.kd', 0.05)
         self.declare_parameter('w_pid.integral_max', 0.2)
+        self.declare_parameter('dt', 0.05)
         self.declare_parameter('velocity_to_pwm_lut_left', 
             [[-15.0, -255.0], [-10.0, -180.0], [-5.0, -100.0], [-1.0, -30.0], [0.0, 0.0], [1.0, 30.0], [5.0, 100.0], [10.0, 180.0], [15.0, 255.0]])
         self.declare_parameter('velocity_to_pwm_lut_right', 
@@ -42,6 +43,7 @@ class ControllerNode(Node):
         w_pid_ki = self.get_parameter('w_pid.ki').get_parameter_value().double_value
         w_pid_kd = self.get_parameter('w_pid.kd').get_parameter_value().double_value
         w_pid_integral_max = self.get_parameter('w_pid.integral_max').get_parameter_value().double_value
+        self.dt = self.get_parameter('dt').get_parameter_value().double_value
         
         lut_param_left = self.get_parameter('velocity_to_pwm_lut_left').get_parameter_value().value
         self.velocity_to_pwm_lut_left = np.array(lut_param_left)
@@ -161,12 +163,23 @@ class ControllerNode(Node):
             start_time = self.get_clock().now()
             while (self.get_clock().now() - start_time).nanoseconds / 1e9 < 3.0:
                 rclpy.spin_once(self, timeout_sec=0.1) # Process incoming messages
+                self.send_pwm_command(pwm, pwm)
 
             # Collect data for the last second
-            num_samples_last_sec = int(1.0 / 0.05) # Assuming 0.05s update rate for joint_states
-            avg_vel_left = np.mean(self.calibration_velocities_left[-num_samples_last_sec:]) if len(self.calibration_velocities_left) >= num_samples_last_sec else np.mean(self.calibration_velocities_left)
-            avg_vel_right = np.mean(self.calibration_velocities_right[-num_samples_last_sec:]) if len(self.calibration_velocities_right) >= num_samples_last_sec else np.mean(self.calibration_velocities_right)
+            num_samples_last_sec = int(1.0 / self.dt) # Using dt from parameters
+
+            if len(self.calibration_velocities_left) < num_samples_last_sec or len(self.calibration_velocities_right) < num_samples_last_sec:
+                self.get_logger().error(f'Not enough samples collected for PWM {pwm}. Aborting calibration for this step.')
+                response.success = False
+                response.message = "Calibration aborted due to insufficient samples."
+                self.calibrating = False
+                return response
             
+            avg_vel_left = np.mean(self.calibration_velocities_left[-num_samples_last_sec:])
+            avg_vel_right = np.mean(self.calibration_velocities_right[-num_samples_last_sec:])
+            
+            self.get_logger().info(f'PWM: {pwm}, Left Wheel: {avg_vel_left:.2f} rad/s ({avg_vel_left * 60 / (2 * np.pi):.2f} RPM), Right Wheel: {avg_vel_right:.2f} rad/s ({avg_vel_right * 60 / (2 * np.pi):.2f} RPM), Averaged measures: {num_samples_last_sec}')
+
             new_lut_left.append([avg_vel_left, float(pwm)])
             new_lut_right.append([avg_vel_right, float(pwm)])
 
@@ -180,11 +193,22 @@ class ControllerNode(Node):
             start_time = self.get_clock().now()
             while (self.get_clock().now() - start_time).nanoseconds / 1e9 < 3.0:
                 rclpy.spin_once(self, timeout_sec=0.1) # Process incoming messages
+                self.send_pwm_command(pwm, pwm)
 
             # Collect data for the last second
-            num_samples_last_sec = int(1.0 / 0.05) # Assuming 0.05s update rate for joint_states
-            avg_vel_left = np.mean(self.calibration_velocities_left[-num_samples_last_sec:]) if len(self.calibration_velocities_left) >= num_samples_last_sec else np.mean(self.calibration_velocities_left)
-            avg_vel_right = np.mean(self.calibration_velocities_right[-num_samples_last_sec:]) if len(self.calibration_velocities_right) >= num_samples_last_sec else np.mean(self.calibration_velocities_right)
+            num_samples_last_sec = int(1.0 / self.dt) # Using dt from parameters
+            
+            if len(self.calibration_velocities_left) < 2*num_samples_last_sec or len(self.calibration_velocities_right) < 2*num_samples_last_sec:
+                self.get_logger().error(f'Not enough samples collected for PWM {pwm}. Aborting calibration for this step.')
+                response.success = False
+                response.message = "Calibration aborted due to insufficient samples."
+                self.calibrating = False
+                return response
+
+            avg_vel_left = np.mean(self.calibration_velocities_left[2*num_samples_last_sec:])
+            avg_vel_right = np.mean(self.calibration_velocities_right[2*num_samples_last_sec:])
+
+            self.get_logger().info(f'PWM: {pwm}, Left Wheel: {avg_vel_left:.2f} rad/s ({avg_vel_left * 60 / (2 * np.pi):.2f} RPM), Right Wheel: {avg_vel_right:.2f} rad/s ({avg_vel_right * 60 / (2 * np.pi):.2f} RPM), Averaged measures: {len(self.calibration_velocities_right[2*num_samples_last_sec:])}')
             
             new_lut_left.append([avg_vel_left, float(pwm)])
             new_lut_right.append([avg_vel_right, float(pwm)])
