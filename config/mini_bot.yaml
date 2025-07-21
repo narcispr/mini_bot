@@ -1,0 +1,43 @@
+mini_bot_params:
+  serial_port: "/dev/ttyACM0"
+  dt: 0.05
+  pulses_window: 5
+  pulses_per_revolution: 20
+  wheel_radius: 0.0325
+  wheel_base: 0.1
+  
+navigation:
+  use_external_theta: True
+
+controller:
+  max_delta_pwm: 25.0
+  v_pid:
+    kp: 1.0
+    ki: 0.1
+    kd: 0.05
+    integral_max: 0.2
+  w_pid:
+    kp: 1.0
+    ki: 0.1
+    kd: 0.05
+    integral_max: 0.2
+  velocity_to_pwm_lut_left:
+    - [-15.0, -255]
+    - [-10.0, -180]
+    - [-5.0, -100]
+    - [-1.0, -30]
+    - [0.0, 0]
+    - [1.0, 30]
+    - [5.0, 100]
+    - [10.0, 180]
+    - [15.0, 255]
+  velocity_to_pwm_lut_right:
+    - [-15.0, -255]
+    - [-10.0, -180]
+    - [-5.0, -100]
+    - [-1.0, -30]
+    - [0.0, 0]
+    - [1.0, 30]
+    - [5.0, 100]
+    - [10.0, 180]
+    - [15.0, 255]

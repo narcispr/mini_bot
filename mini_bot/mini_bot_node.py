@@ -1,6 +1,5 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.duration import Duration
 from sensor_msgs.msg import Range
 from sensor_msgs.msg import PointCloud2
 import sensor_msgs_py.point_cloud2 as pc2
@@ -11,6 +10,7 @@ from std_msgs.msg import UInt8MultiArray
 
 import math
 import serial
+import threading
 
 import numpy as np
 import mini_bot.utils.bot_comms as coms
@@ -19,13 +19,23 @@ class MiniBotNode(Node):
     def __init__(self):
         super().__init__('mini_bot_node')
 
+        # Declare parameters
+        self.declare_parameter('serial_port', '/dev/ttyACM0')
+        self.declare_parameter('dt', 0.05)
+        self.declare_parameter('pulses_window', 5)
+        self.declare_parameter('pulses_per_revolution', 20)
+
+        # Get parameters
+        serial_port = self.get_parameter('serial_port').get_parameter_value().string_value
+        self.dt = self.get_parameter('dt').get_parameter_value().double_value
+        self.pulses_window = self.get_parameter('pulses_window').get_parameter_value().integer_value
+        self.pulses_per_revolution = self.get_parameter('pulses_per_revolution').get_parameter_value().integer_value
+
         # Serial port for Arduino communications
-        self.ser = serial.Serial("/dev/ttyACM0", 9600, timeout=1)
+        self.ser = serial.Serial(serial_port, 9600, timeout=1)
+        self.serial_lock = threading.Lock()
 
         # Global vars
-        self.dt = 0.05
-        self.pulses_window = 5
-        self.pulses_per_revolution = 20
         self.all_pulses = np.zeros((2, self.pulses_window), dtype=np.uint8)
         self.pulses_idx = 0
         self.left_pwm = 0
@@ -49,11 +59,6 @@ class MiniBotNode(Node):
         self.left_pwm = msg.data[0]
         self.right_pwm = msg.data[1]
         self.last_pwm_cmd = self.get_clock().now()
-
-        # Envia per serial
-        msg_bytes = coms.build_pwm_message(self.left_pwm, self.right_pwm)
-        with self.serial_lock:
-            self.ser.write(msg_bytes)
 
     def read_sensors(self):
         with self.serial_lock:
