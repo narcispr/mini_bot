@@ -26,7 +26,7 @@ def build_pwm_message(left_speed, right_speed):
     for b in msg[1:]:
         checksum ^= b
     msg += bytearray([checksum, END_BYTE])
-    return msg
+    return msg, l_dir, r_dir
 
 def read_message(ser):
     state = 0
@@ -88,7 +88,7 @@ def write_thread(ser):
         try:
             left = int(input("RPM esquerra (-255 a 255): "))
             right = int(input("RPM dreta (-255 a 255): "))
-            msg = build_pwm_message(left, right)
+            msg, _, _ = build_pwm_message(left, right)
             with serial_lock:
                 ser.write(msg)
             print(f"[Enviat] {list(msg)}\n")

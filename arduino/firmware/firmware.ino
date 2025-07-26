@@ -28,8 +28,8 @@ uint16_t dist = 0;
 NewPing sonar(TRIG_PIN, ECHO_PIN, MAX_DIST);
 
 // Motors
-AF_DCMotor motor_left(1);
-AF_DCMotor motor_right(2);
+AF_DCMotor motor_left(3);
+AF_DCMotor motor_right(4);
 
 int motor_left_pwm = 0;
 int motor_left_state = RELEASE;
@@ -149,7 +149,6 @@ void setup() {
   if (!compass.begin()) {
     splitToBytes(0xFFFF, angle, 2); 
     sendMessage(ID_SENSOR_COMPASS, angle, 2); // Envia un valor d'angle que no pot ser...
-    while (1); // Espera indefinida si no es pot inicialitzar
   } 
 }
 

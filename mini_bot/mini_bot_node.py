@@ -32,7 +32,7 @@ class MiniBotNode(Node):
         self.pulses_per_revolution = self.get_parameter('pulses_per_revolution').get_parameter_value().integer_value
 
         # Serial port for Arduino communications
-        self.ser = serial.Serial(serial_port, 9600, timeout=1)
+        self.ser = serial.Serial(serial_port, 115200, timeout=1)
         self.serial_lock = threading.Lock()
 
         # Global vars
@@ -40,6 +40,8 @@ class MiniBotNode(Node):
         self.pulses_idx = 0
         self.left_pwm = 0
         self.right_pwm = 0
+        self.l_dir = 1
+        self.r_dir = 1
         self.last_pwm_cmd = self.get_clock().now()
 
         # ROS interfaces
@@ -51,7 +53,9 @@ class MiniBotNode(Node):
         
         # Timers
         self.create_timer(self.dt, self.write_motors)
-        self.create_timer(self.dt, self.read_sensors)
+        # Start a separate thread for reading sensors
+        self.read_sensors_thread = threading.Thread(target=self.read_sensors_loop, daemon=True)
+        self.read_sensors_thread.start()
 
        
     def pwm_callback(self, msg: UInt8MultiArray):
@@ -60,6 +64,17 @@ class MiniBotNode(Node):
         self.right_pwm = msg.data[1]
         self.last_pwm_cmd = self.get_clock().now()
 
+    def read_sensors_loop(self):
+        while rclpy.ok():
+            try:
+                self.read_sensors()
+            except serial.SerialException as e:
+                self.get_logger().error(f'Serial error: {e}')
+                break
+            except Exception as e:
+                self.get_logger().error(f'Error reading sensors: {e}')
+            rclpy.spin_once(self, timeout_sec=self.dt/10.0)
+    
     def read_sensors(self):
         with self.serial_lock:
             data = coms.read_message(self.ser)
@@ -79,6 +94,7 @@ class MiniBotNode(Node):
                 angle_msg = Int32()
                 angle_msg.data = int(angle)
                 self.angle_pub.publish(angle_msg)
+                # self.get_logger().info(f'Published compass angle: {angle_msg.data} degrees')
 
     def write_motors(self):
         # If no PWM command has been sent in the last second, stop the motors
@@ -89,9 +105,14 @@ class MiniBotNode(Node):
             self.right_pwm = 0
 
         # Send PWM values to the motors
-        msg_bytes = coms.build_pwm_message(self.left_pwm, self.right_pwm)
+        msg_bytes, self.l_dir, self.r_dir = coms.build_pwm_message(self.left_pwm, self.right_pwm)
+        if self.l_dir == 0:
+            self.l_dir = -1
+        if self.r_dir == 0:
+            self.r_dir = -1
         with self.serial_lock:
             self.ser.write(msg_bytes)
+            # self.get_logger().info(f'Sent PWM: left={self.left_pwm}, right={self.right_pwm}')
 
     def publish_joint_state(self):
         # Publish joint state velocities (rad/s) to /joint_states
@@ -100,14 +121,15 @@ class MiniBotNode(Node):
         rpm_right = np.sum(self.all_pulses[1]) * (60.0 / (self.pulses_window * self.dt)) / self.pulses_per_revolution
 
         # Convert RPM to rad/s: rad/s = RPM * 2*pi / 60
-        vel_left = rpm_left * 2 * np.pi / 60.0
-        vel_right = rpm_right * 2 * np.pi / 60.0
+        vel_left = self.l_dir * rpm_left * 2 * np.pi / 60.0
+        vel_right = self.r_dir * rpm_right * 2 * np.pi / 60.0
 
         joint_state = JointState()
         joint_state.header.stamp = self.get_clock().now().to_msg()
         joint_state.name = ['left_wheel_joint', 'right_wheel_joint']
         joint_state.velocity = [vel_left, vel_right]
         self.joint_state_pub.publish(joint_state)
+        # self.get_logger().info(f'Published joint velocities: left={vel_left:.3f} rad/s, right={vel_right:.3f} rad/s')
 
     def publish_range(self, dist_cm):
         now = self.get_clock().now().to_msg()
@@ -122,6 +144,8 @@ class MiniBotNode(Node):
         range_msg.max_range = 3.0
         range_msg.range = dist_cm / 100.0
         self.range_pub.publish(range_msg)
+        # self.get_logger().info(f'Published range: {range_msg.range:.2f} m')
+
 
         # --- 2. Simulate a 20º fan of points at given distance
         distance_m = dist_cm / 100.0
