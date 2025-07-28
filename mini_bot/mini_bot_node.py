@@ -106,10 +106,7 @@ class MiniBotNode(Node):
 
         # Send PWM values to the motors
         msg_bytes, self.l_dir, self.r_dir = coms.build_pwm_message(self.left_pwm, self.right_pwm)
-        if self.l_dir == 0:
-            self.l_dir = -1
-        if self.r_dir == 0:
-            self.r_dir = -1
+        
         with self.serial_lock:
             self.ser.write(msg_bytes)
             # self.get_logger().info(f'Sent PWM: left={self.left_pwm}, right={self.right_pwm}')
@@ -121,8 +118,8 @@ class MiniBotNode(Node):
         rpm_right = np.sum(self.all_pulses[1]) * (60.0 / (self.pulses_window * self.dt)) / self.pulses_per_revolution
 
         # Convert RPM to rad/s: rad/s = RPM * 2*pi / 60
-        vel_left = self.l_dir * rpm_left * 2 * np.pi / 60.0
-        vel_right = self.r_dir * rpm_right * 2 * np.pi / 60.0
+        vel_left = np.sign(self.left_pwm) * rpm_left * 2 * np.pi / 60.0
+        vel_right = np.sign(self.right_pwm) * rpm_right * 2 * np.pi / 60.0
 
         joint_state = JointState()
         joint_state.header.stamp = self.get_clock().now().to_msg()
