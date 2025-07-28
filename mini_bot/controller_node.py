@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from std_msgs.msg import UInt8MultiArray
+from std_msgs.msg import Int16MultiArray
 from sensor_msgs.msg import JointState
 from std_srvs.srv import Trigger, TriggerResponse
 import numpy as np
@@ -69,7 +69,7 @@ class ControllerNode(Node):
         self.calibration_velocities_right = []
 
         # Publishers and subscribers
-        self.pwm_pub = self.create_publisher(UInt8MultiArray, 'pwm_setpoints', 10)
+        self.pwm_pub = self.create_publisher(Int16MultiArray, 'pwm_setpoints', 10)
         self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
         self.create_subscription(JointState, 'joint_states', self.joint_state_callback, 10)
@@ -131,10 +131,7 @@ class ControllerNode(Node):
         self.last_left_pwm = left_pwm
         self.last_right_pwm = right_pwm
 
-        # Create and publish the PWM message
-        pwm_msg = UInt8MultiArray()
-        pwm_msg.data = [int(left_pwm), int(right_pwm)]
-        self.pwm_pub.publish(pwm_msg)
+        self.send_pwm_command(int(left_pwm), int(right_pwm))
 
     def odom_callback(self, msg: Odometry):
         # Store current linear and angular velocities
@@ -142,7 +139,7 @@ class ControllerNode(Node):
         self.current_w = msg.twist.twist.angular.z
 
     def send_pwm_command(self, left_pwm, right_pwm):
-        pwm_msg = UInt8MultiArray()
+        pwm_msg = Int16MultiArray()
         pwm_msg.data = [int(left_pwm), int(right_pwm)]
         self.pwm_pub.publish(pwm_msg)
 
@@ -289,10 +286,7 @@ if __name__ == '__main__':
         self.last_left_pwm = left_pwm
         self.last_right_pwm = right_pwm
 
-        # Create and publish the PWM message
-        pwm_msg = UInt8MultiArray()
-        pwm_msg.data = [int(left_pwm), int(right_pwm)]
-        self.pwm_pub.publish(pwm_msg)
+        self.send_pwm_command(int(left_pwm), int(right_pwm))
 
     def odom_callback(self, msg: Odometry):
         # Store current linear and angular velocities

@@ -6,7 +6,7 @@ import sensor_msgs_py.point_cloud2 as pc2
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Int32
 from std_msgs.msg import Header
-from std_msgs.msg import UInt8MultiArray
+from std_msgs.msg import Int16MultiArray
 
 import math
 import serial
@@ -49,7 +49,7 @@ class MiniBotNode(Node):
         self.pc_pub = self.create_publisher(PointCloud2, 'range_pointcloud', 10)
         self.joint_state_pub = self.create_publisher(JointState, 'joint_states', 10)
         self.angle_pub = self.create_publisher(Int32, 'compass_angle', 10)
-        self.create_subscription(UInt8MultiArray, 'pwm_setpoints',  self.pwm_callback, 10)
+        self.create_subscription(Int16MultiArray, 'pwm_setpoints',  self.pwm_callback, 10)
         
         # Timers
         self.create_timer(self.dt, self.write_motors)
@@ -58,7 +58,7 @@ class MiniBotNode(Node):
         self.read_sensors_thread.start()
 
        
-    def pwm_callback(self, msg: UInt8MultiArray):
+    def pwm_callback(self, msg: Int16MultiArray):
         # Entrada original
         self.left_pwm = msg.data[0]
         self.right_pwm = msg.data[1]
