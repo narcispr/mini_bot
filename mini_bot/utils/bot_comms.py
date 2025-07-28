@@ -26,7 +26,7 @@ def build_pwm_message(left_speed, right_speed):
     for b in msg[1:]:
         checksum ^= b
     msg += bytearray([checksum, END_BYTE])
-    return msg, l_dir, r_dir
+    return msg
 
 def read_message(ser):
     state = 0

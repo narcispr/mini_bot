@@ -131,7 +131,7 @@ void writeMotors() {
 
 void setup() {
   //Init Serial
-  Serial.begin(9600);
+  Serial.begin(115200);
   
   // Init Motors
   writeMotors();
@@ -175,9 +175,9 @@ void loop() {
     writeMotors();
     if (motor_watch_dog <= 0) {
       motor_left_pwm = 0;
-      motor_left_state = RELEASE;
+      motor_left_state = BRAKE;
       motor_right_pwm = 0;
-      motor_right_state = RELEASE;
+      motor_right_state = BRAKE;
     }
     else {
       motor_watch_dog = motor_watch_dog - 1;

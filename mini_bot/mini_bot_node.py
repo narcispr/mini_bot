@@ -40,8 +40,7 @@ class MiniBotNode(Node):
         self.pulses_idx = 0
         self.left_pwm = 0
         self.right_pwm = 0
-        self.l_dir = 1
-        self.r_dir = 1
+        
         self.last_pwm_cmd = self.get_clock().now()
 
         # ROS interfaces
@@ -60,8 +59,8 @@ class MiniBotNode(Node):
        
     def pwm_callback(self, msg: Int16MultiArray):
         # Entrada original
-        self.left_pwm = msg.data[0]
-        self.right_pwm = msg.data[1]
+        self.left_pwm = np.clip(msg.data[0], -255, 255)
+        self.right_pwm = np.clip(msg.data[1], -255, 255)
         self.last_pwm_cmd = self.get_clock().now()
 
     def read_sensors_loop(self):
@@ -91,9 +90,10 @@ class MiniBotNode(Node):
                 self.publish_joint_state()
             if msg_id == coms.ID_SENSOR_COMPASS and len(payload) == 2:
                 angle = payload[0] | (payload[1] << 8)
-                angle_msg = Int32()
-                angle_msg.data = int(angle)
-                self.angle_pub.publish(angle_msg)
+                if angle != 0xFFFF: # Check for invalid compass reading
+                    angle_msg = Int32()
+                    angle_msg.data = int(angle)
+                    self.angle_pub.publish(angle_msg)
                 # self.get_logger().info(f'Published compass angle: {angle_msg.data} degrees')
 
     def write_motors(self):
@@ -105,7 +105,7 @@ class MiniBotNode(Node):
             self.right_pwm = 0
 
         # Send PWM values to the motors
-        msg_bytes, self.l_dir, self.r_dir = coms.build_pwm_message(self.left_pwm, self.right_pwm)
+        msg_bytes = coms.build_pwm_message(self.left_pwm, self.right_pwm)
         
         with self.serial_lock:
             self.ser.write(msg_bytes)
