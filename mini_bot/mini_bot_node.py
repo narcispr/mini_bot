@@ -166,7 +166,7 @@ class MiniBotNode(Node):
             return
 
         # Unpack 3 signed 16-bit integers (little-endian)
-        mag_x_raw, mag_y_raw, mag_z_raw = struct.unpack('<hhh', payload)
+        mag_x_raw, mag_y_raw, mag_z_raw = struct.unpack('<hhh', bytearray(payload))
 
         # Convert back to float and to Teslas (from micro-Teslas * 100)
         # The sensor reports in micro-Teslas (uT)
