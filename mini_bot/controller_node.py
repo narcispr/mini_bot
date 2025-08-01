@@ -215,12 +215,28 @@ class ControllerNode(Node):
         self.calibrating = False
 
         self.get_logger().info('Calibration complete.')
-        self.get_logger().info('New Left Wheel LUT (velocity_rads, pwm):')
-        for row in new_lut_left:
-            self.get_logger().info(f'  {row}')
-        self.get_logger().info('New Right Wheel LUT (velocity_rads, pwm):')
-        for row in new_lut_right:
-            self.get_logger().info(f'  {row}')
+
+        # Sort by velocity for correct interpolation and consistent output
+        new_lut_left.sort(key=lambda x: x[0])
+        new_lut_right.sort(key=lambda x: x[0])
+
+        # Prepare the YAML-formatted output string
+        output_message = '\n\n'
+        output_message += '#' * 70 + '\n'
+        output_message += '# Copy and paste the following into your YAML config file             #\n'
+        output_message += '#' * 70 + '\n\n'
+        output_message += '    velocity_to_pwm_lut_left:\n'
+        for vel, pwm in new_lut_left:
+            output_message += f'      - {vel:.4f}\n'
+            output_message += f'      - {pwm:.1f}\n'
+        output_message += '\n'
+        output_message += '    velocity_to_pwm_lut_right:\n'
+        for vel, pwm in new_lut_right:
+            output_message += f'      - {vel:.4f}\n'
+            output_message += f'      - {pwm:.1f}\n'
+        output_message += '\n' + '#' * 70 + '\n'
+        
+        self.get_logger().info(output_message)
 
         self.get_logger().warn('Please manually update the `velocity_to_pwm_lut_left` and `velocity_to_pwm_lut_right` parameters in `config/mini_bot.yaml` with these new values.')
 
