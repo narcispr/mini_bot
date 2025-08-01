@@ -7,7 +7,23 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 import numpy as np
-# import tf_transformations
+
+
+def euler_to_quaternion(roll, pitch, yaw):
+    """Converts Euler angles to a quaternion."""
+    cy = np.cos(yaw * 0.5)
+    sy = np.sin(yaw * 0.5)
+    cp = np.cos(pitch * 0.5)
+    sp = np.sin(pitch * 0.5)
+    cr = np.cos(roll * 0.5)
+    sr = np.sin(roll * 0.5)
+
+    qx = sr * cp * cy - cr * sp * sy
+    qy = cr * sp * cy + sr * cp * sy
+    qz = cr * cp * sy - sr * sp * cy
+    qw = cr * cp * cy + sr * sp * sy
+
+    return [qx, qy, qz, qw]
 
 
 class NavigationNode(Node):
@@ -91,10 +107,15 @@ class NavigationNode(Node):
         odom_msg.header.frame_id = 'odom'
         odom_msg.child_frame_id = 'base_link'
 
+        quat = euler_to_quaternion(0, 0, self.pose.theta)
+
         # Set pose
         odom_msg.pose.pose.position.x = self.pose.x
         odom_msg.pose.pose.position.y = self.pose.y
-        # odom_msg.pose.pose.orientation = tf_transformations.quaternion_from_euler(0, 0, self.pose.theta)
+        odom_msg.pose.pose.orientation.x = quat[0]
+        odom_msg.pose.pose.orientation.y = quat[1]
+        odom_msg.pose.pose.orientation.z = quat[2]
+        odom_msg.pose.pose.orientation.w = quat[3]
 
         # Set twist
         odom_msg.twist.twist.linear.x = self.v
@@ -111,11 +132,10 @@ class NavigationNode(Node):
         t.transform.translation.x = self.pose.x
         t.transform.translation.y = self.pose.y
         t.transform.translation.z = 0.0
-        # quat = tf_transformations.quaternion_from_euler(0, 0, self.pose.theta)
-        # t.transform.rotation.x = quat[0]
-        # t.transform.rotation.y = quat[1]
-        # t.transform.rotation.z = quat[2]
-        # t.transform.rotation.w = quat[3]
+        t.transform.rotation.x = quat[0]
+        t.transform.rotation.y = quat[1]
+        t.transform.rotation.z = quat[2]
+        t.transform.rotation.w = quat[3]
 
         self.tf_broadcaster.sendTransform(t)
 
