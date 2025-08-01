@@ -1,13 +1,9 @@
-# Common parameters shared across nodes, defined once using a YAML anchor
-common_params: &common_params
-  wheel_radius: 0.0325
-  wheel_base: 0.1
-  dt: 0.05
-
 # Parameters for the mini_bot_node
 mini_bot_node:
   ros__parameters:
-    <<: *common_params # Merge the common parameters
+    wheel_radius: 0.0325
+    wheel_base: 0.1
+    dt: 0.05
     serial_port: "/dev/ttyACM0"
     pulses_window: 5
     pulses_per_revolution: 20
@@ -15,13 +11,17 @@ mini_bot_node:
 # Parameters for the navigation_node
 navigation_node:
   ros__parameters:
-    <<: *common_params # Merge the common parameters
+    wheel_radius: 0.0325
+    wheel_base: 0.1
+    dt: 0.05
     use_external_theta: False
 
 # Parameters for the controller_node
 controller_node:
   ros__parameters:
-    <<: *common_params # Merge the common parameters
+    wheel_radius: 0.0325
+    wheel_base: 0.1
+    dt: 0.05
     max_delta_pwm: 25.0
     v_pid:
       kp: 1.0

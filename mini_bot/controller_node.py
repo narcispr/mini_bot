@@ -4,7 +4,7 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Int16MultiArray
 from sensor_msgs.msg import JointState
-from std_srvs.srv import Trigger, TriggerResponse
+from std_srvs.srv import Trigger
 import numpy as np
 from mini_bot.utils.pid import PID
 import time
