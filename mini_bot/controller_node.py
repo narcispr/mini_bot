@@ -27,9 +27,9 @@ class ControllerNode(Node):
         self.declare_parameter('w_pid.integral_max', 0.2)
         self.declare_parameter('dt', 0.05)
         self.declare_parameter('velocity_to_pwm_lut_left', 
-            [[-15.0, -255.0], [-10.0, -180.0], [-5.0, -100.0], [-1.0, -30.0], [0.0, 0.0], [1.0, 30.0], [5.0, 100.0], [10.0, 180.0], [15.0, 255.0]])
+            [-15.0, -255.0, -10.0, -180.0, -5.0, -100.0, -1.0, -30.0, 0.0, 0.0, 1.0, 30.0, 5.0, 100.0, 10.0, 180.0, 15.0, 255.0])
         self.declare_parameter('velocity_to_pwm_lut_right', 
-            [[-15.0, -255.0], [-10.0, -180.0], [-5.0, -100.0], [-1.0, -30.0], [0.0, 0.0], [1.0, 30.0], [5.0, 100.0], [10.0, 180.0], [15.0, 255.0]])
+            [-15.0, -255.0, -10.0, -180.0, -5.0, -100.0, -1.0, -30.0, 0.0, 0.0, 1.0, 30.0, 5.0, 100.0, 10.0, 180.0, 15.0, 255.0])
 
         # Get parameters
         self.wheel_radius = self.get_parameter('wheel_radius').get_parameter_value().double_value
@@ -45,10 +45,10 @@ class ControllerNode(Node):
         w_pid_integral_max = self.get_parameter('w_pid.integral_max').get_parameter_value().double_value
         self.dt = self.get_parameter('dt').get_parameter_value().double_value
         
-        lut_param_left = self.get_parameter('velocity_to_pwm_lut_left').get_parameter_value().value
-        self.velocity_to_pwm_lut_left = np.array(lut_param_left)
-        lut_param_right = self.get_parameter('velocity_to_pwm_lut_right').get_parameter_value().value
-        self.velocity_to_pwm_lut_right = np.array(lut_param_right)
+        lut_param_left = self.get_parameter('velocity_to_pwm_lut_left').get_parameter_value().double_array_value
+        self.velocity_to_pwm_lut_left = np.array(lut_param_left).reshape(-1, 2)
+        lut_param_right = self.get_parameter('velocity_to_pwm_lut_right').get_parameter_value().double_array_value
+        self.velocity_to_pwm_lut_right = np.array(lut_param_right).reshape(-1, 2)
 
         # Store current velocities
         self.current_v = 0.0
