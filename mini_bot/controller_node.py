@@ -82,8 +82,10 @@ class ControllerNode(Node):
             # Assuming joint_state.velocity[0] is left and [1] is right
             self.calibration_velocities_left.append(msg.velocity[0])
             self.calibration_velocities_right.append(msg.velocity[1])
+            self.get_logger().debug(f'Left wheel velocity: {msg.velocity[0]}, Right wheel velocity: {msg.velocity[1]}')
 
     def cmd_vel_callback(self, msg: Twist):
+        # self.get_logger().info(f'Received cmd_vel: linear={msg.linear.x}, angular={msg.angular.z}')
         if self.calibrating:
             return # Ignore cmd_vel during calibration
 
@@ -93,7 +95,8 @@ class ControllerNode(Node):
 
         # Calculate time delta
         now = self.get_clock().now()
-        dt = (now - self.last_time).nanoseconds / 1e9
+        # TODO: cmd_vel can be discrete, so using the last time may not work well
+        dt = 0.1 #(now - self.last_time).nanoseconds / 1e9
         self.last_time = now
 
         # Calculate errors
@@ -105,13 +108,10 @@ class ControllerNode(Node):
         w_correction = self.w_pid.update(w_error, dt)
 
         # Final velocities
-        v = v_feed_forward + v_correction
-        w = w_feed_forward + w_correction
+        v = v_feed_forward #+ v_correction
+        w = w_feed_forward #+ w_correction
 
         # Inverse kinematics for a differential drive robot
-        # vr = (2*v + w*L) / (2*R)
-        # vl = (2*v - w*L) / (2*R)
-        
         vr_rads = ((2 * v) + (w * self.wheel_base)) / (2 * self.wheel_radius)
         vl_rads = ((2 * v) - (w * self.wheel_base)) / (2 * self.wheel_radius)
 
@@ -120,16 +120,16 @@ class ControllerNode(Node):
         right_pwm = np.interp(vr_rads, self.velocity_to_pwm_lut_right[:, 0], self.velocity_to_pwm_lut_right[:, 1])
 
         # Smooth the PWM output
-        delta_left = left_pwm - self.last_left_pwm
-        if abs(delta_left) > self.max_delta_pwm:
-            left_pwm = self.last_left_pwm + np.sign(delta_left) * self.max_delta_pwm
+        # delta_left = left_pwm - self.last_left_pwm
+        # if abs(delta_left) > self.max_delta_pwm:
+        #     left_pwm = self.last_left_pwm + np.sign(delta_left) * self.max_delta_pwm
 
-        delta_right = right_pwm - self.last_right_pwm
-        if abs(delta_right) > self.max_delta_pwm:
-            right_pwm = self.last_right_pwm + np.sign(delta_right) * self.max_delta_pwm
+        # delta_right = right_pwm - self.last_right_pwm
+        # if abs(delta_right) > self.max_delta_pwm:
+        #     right_pwm = self.last_right_pwm + np.sign(delta_right) * self.max_delta_pwm
         
-        self.last_left_pwm = left_pwm
-        self.last_right_pwm = right_pwm
+        # self.last_left_pwm = left_pwm
+        # self.last_right_pwm = right_pwm
 
         self.send_pwm_command(int(left_pwm), int(right_pwm))
 
@@ -164,7 +164,7 @@ class ControllerNode(Node):
 
             # Collect data for the last second
             num_samples_last_sec = int(1.0 / self.dt) # Using dt from parameters
-
+            self.get_logger().info(f'Collected data for the last second at PWM {pwm} is: {len(self.calibration_velocities_right)}')
             if len(self.calibration_velocities_left) < num_samples_last_sec or len(self.calibration_velocities_right) < num_samples_last_sec:
                 self.get_logger().error(f'Not enough samples collected for PWM {pwm}. Aborting calibration for this step.')
                 response.success = False
