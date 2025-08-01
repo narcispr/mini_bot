@@ -14,7 +14,6 @@
 
 // Crear l'objecte del sensor
 Adafruit_HMC5883_Unified compass = Adafruit_HMC5883_Unified(12345);
-uint8_t angle[2];
 // CONNECT the compass to the I2C bus
 // SCL --> A5
 // SDA --> A4
@@ -147,8 +146,8 @@ void setup() {
 
   // Inicialitzar el sensor
   if (!compass.begin()) {
-    splitToBytes(0xFFFF, angle, 2); 
-    sendMessage(ID_SENSOR_COMPASS, angle, 2); // Envia un valor d'angle que no pot ser...
+    // This will be handled in the main loop, which will detect
+    // the failure (reading all zeros) and send an error code.
   } 
 }
 
@@ -186,14 +185,25 @@ void loop() {
     // Read compass
     sensors_event_t event;
     compass.getEvent(&event);
+    uint8_t mag_data[6];
     if (event.magnetic.x == 0 && event.magnetic.y == 0 && event.magnetic.z == 0) {
-      splitToBytes(0xFFFF, angle, 2); // Envia un valor d'angle que no pot ser...
+      // Send error code (all 0xFF)
+      for(int i=0; i<6; i++) mag_data[i] = 0xFF;
     } else {
-      int16_t heading = atan2(event.magnetic.y, event.magnetic.x) * 180 / PI; // Convert to degrees
-      if (heading < 0) heading += 360; // Normalize to 0-359
-      splitToBytes(heading, angle, 2);
+      // Scale and convert to signed 16-bit integers (multiplied by 100)
+      int16_t mag_x = (int16_t)(event.magnetic.x * 100.0);
+      int16_t mag_y = (int16_t)(event.magnetic.y * 100.0);
+      int16_t mag_z = (int16_t)(event.magnetic.z * 100.0);
+
+      // Pack into byte array (Little Endian)
+      mag_data[0] = mag_x & 0xFF;
+      mag_data[1] = (mag_x >> 8) & 0xFF;
+      mag_data[2] = mag_y & 0xFF;
+      mag_data[3] = (mag_y >> 8) & 0xFF;
+      mag_data[4] = mag_z & 0xFF;
+      mag_data[5] = (mag_z >> 8) & 0xFF;
     }
-    sendMessage(ID_SENSOR_COMPASS, angle, 2);
+    sendMessage(ID_SENSOR_COMPASS, mag_data, 6);
   } 
 
   // At Every iteration: Read encoder pulses bu polling

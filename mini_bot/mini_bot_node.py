@@ -1,16 +1,13 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Range
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import Range, PointCloud2, JointState, MagneticField
 import sensor_msgs_py.point_cloud2 as pc2
-from sensor_msgs.msg import JointState
-from std_msgs.msg import Int32
-from std_msgs.msg import Header
-from std_msgs.msg import Int16MultiArray
+from std_msgs.msg import Int32, Header, Int16MultiArray
 
 import math
 import serial
 import threading
+import struct
 
 import numpy as np
 import mini_bot.utils.bot_comms as coms
@@ -47,6 +44,7 @@ class MiniBotNode(Node):
         self.range_pub = self.create_publisher(Range, 'range', 10)
         self.pc_pub = self.create_publisher(PointCloud2, 'range_pointcloud', 10)
         self.joint_state_pub = self.create_publisher(JointState, 'joint_states', 10)
+        self.mag_pub = self.create_publisher(MagneticField, 'imu/mag', 10)
         self.angle_pub = self.create_publisher(Int32, 'compass_angle', 10)
         self.create_subscription(Int16MultiArray, 'pwm_setpoints',  self.pwm_callback, 10)
         
@@ -88,13 +86,8 @@ class MiniBotNode(Node):
                 self.all_pulses[1, self.pulses_idx] = payload[1]
                 self.pulses_idx = (self.pulses_idx + 1) % self.pulses_window
                 self.publish_joint_state()
-            if msg_id == coms.ID_SENSOR_COMPASS and len(payload) == 2:
-                angle = payload[0] | (payload[1] << 8)
-                if angle != 0xFFFF: # Check for invalid compass reading
-                    angle_msg = Int32()
-                    angle_msg.data = int(angle)
-                    self.angle_pub.publish(angle_msg)
-                # self.get_logger().info(f'Published compass angle: {angle_msg.data} degrees')
+            if msg_id == coms.ID_SENSOR_COMPASS and len(payload) == 6:
+                self._process_compass_data(payload)
 
     def write_motors(self):
         # If no PWM command has been sent in the last second, stop the motors
@@ -109,7 +102,6 @@ class MiniBotNode(Node):
         
         with self.serial_lock:
             self.ser.write(msg_bytes)
-            # self.get_logger().info(f'Sent PWM: left={self.left_pwm}, right={self.right_pwm}')
 
     def publish_joint_state(self):
         # Publish joint state velocities (rad/s) to /joint_states
@@ -126,7 +118,6 @@ class MiniBotNode(Node):
         joint_state.name = ['left_wheel_joint', 'right_wheel_joint']
         joint_state.velocity = [vel_left, vel_right]
         self.joint_state_pub.publish(joint_state)
-        # self.get_logger().info(f'Published joint velocities: left={vel_left:.3f} rad/s, right={vel_right:.3f} rad/s')
 
     def publish_range(self, dist_cm):
         now = self.get_clock().now().to_msg()
@@ -141,8 +132,6 @@ class MiniBotNode(Node):
         range_msg.max_range = 3.0
         range_msg.range = dist_cm / 100.0
         self.range_pub.publish(range_msg)
-        # self.get_logger().info(f'Published range: {range_msg.range:.2f} m')
-
 
         # --- 2. Simulate a 20º fan of points at given distance
         distance_m = dist_cm / 100.0
@@ -169,6 +158,42 @@ class MiniBotNode(Node):
 
         cloud_msg = pc2.create_cloud_xyz32(header, points)
         self.pc_pub.publish(cloud_msg)
+
+    def _process_compass_data(self, payload):
+        # Check for error code from Arduino (all 0xFF)
+        if all(p == 0xFF for p in payload):
+            self.get_logger().warn('Invalid compass reading received from Arduino.')
+            return
+
+        # Unpack 3 signed 16-bit integers (little-endian)
+        mag_x_raw, mag_y_raw, mag_z_raw = struct.unpack('<hhh', payload)
+
+        # Convert back to float and to Teslas (from micro-Teslas * 100)
+        # The sensor reports in micro-Teslas (uT)
+        mag_x = float(mag_x_raw) / 100.0 * 1e-6 # Convert from scaled uT to T
+        mag_y = float(mag_y_raw) / 100.0 * 1e-6 # Convert from scaled uT to T
+        mag_z = float(mag_z_raw) / 100.0 * 1e-6 # Convert from scaled uT to T
+
+        # Publish MagneticField message
+        mag_msg = MagneticField()
+        mag_msg.header.stamp = self.get_clock().now().to_msg()
+        mag_msg.header.frame_id = 'imu_link' # Or your appropriate frame
+        mag_msg.magnetic_field.x = mag_x
+        mag_msg.magnetic_field.y = mag_y
+        mag_msg.magnetic_field.z = mag_z
+        # We don't have covariance data, so we leave it as zeros
+        self.mag_pub.publish(mag_msg)
+
+        # --- Calculate and publish yaw angle for backward compatibility ---
+        # Calculate heading in degrees from the raw magnetometer data (in uT)
+        heading_rad = math.atan2(mag_y_raw, mag_x_raw)
+        heading_deg = math.degrees(heading_rad)
+        if heading_deg < 0:
+            heading_deg += 360
+
+        angle_msg = Int32()
+        angle_msg.data = int(heading_deg)
+        self.angle_pub.publish(angle_msg)
 
 
 def main(args=None):
