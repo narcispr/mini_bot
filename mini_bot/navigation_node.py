@@ -7,7 +7,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 import numpy as np
-import tf_transformations
+# import tf_transformations
 
 
 class NavigationNode(Node):
@@ -66,13 +66,13 @@ class NavigationNode(Node):
 
         # check last_theta_time
         time_since_theta = (self.get_clock().now() - self.last_theta_time).nanoseconds / 1e9
-        if time_since_theta > 0.2:
+        if time_since_theta > 0.2 and self.use_external_theta:
             self.get_logger().error('Compass heading message is older than 0.2s!')
        
         # Integrate position
         self.pose.x += self.v * dt * float(np.cos(self.pose.theta))
         self.pose.y += self.v * dt * float(np.sin(self.pose.theta))
-        if not self.use_externa_theta:
+        if not self.use_external_theta:
             self.pose.theta += self.w * dt
             if self.pose.theta > 2 * np.pi:
                 self.pose.theta -= 2 * np.pi
@@ -94,7 +94,7 @@ class NavigationNode(Node):
         # Set pose
         odom_msg.pose.pose.position.x = self.pose.x
         odom_msg.pose.pose.position.y = self.pose.y
-        odom_msg.pose.pose.orientation = tf_transformations.quaternion_from_euler(0, 0, self.pose.theta)
+        # odom_msg.pose.pose.orientation = tf_transformations.quaternion_from_euler(0, 0, self.pose.theta)
 
         # Set twist
         odom_msg.twist.twist.linear.x = self.v
@@ -111,11 +111,11 @@ class NavigationNode(Node):
         t.transform.translation.x = self.pose.x
         t.transform.translation.y = self.pose.y
         t.transform.translation.z = 0.0
-        quat = tf_transformations.quaternion_from_euler(0, 0, self.pose.theta)
-        t.transform.rotation.x = quat[0]
-        t.transform.rotation.y = quat[1]
-        t.transform.rotation.z = quat[2]
-        t.transform.rotation.w = quat[3]
+        # quat = tf_transformations.quaternion_from_euler(0, 0, self.pose.theta)
+        # t.transform.rotation.x = quat[0]
+        # t.transform.rotation.y = quat[1]
+        # t.transform.rotation.z = quat[2]
+        # t.transform.rotation.w = quat[3]
 
         self.tf_broadcaster.sendTransform(t)
 

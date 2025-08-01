@@ -7,7 +7,7 @@ mini_bot_params:
   wheel_base: 0.1
   
 navigation:
-  use_external_theta: True
+  use_external_theta: False
 
 controller:
   max_delta_pwm: 25.0

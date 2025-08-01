@@ -19,7 +19,7 @@ def to_motor_bytes(speed):
 def build_pwm_message(left_speed, right_speed):
     l_dir, l_pwm = to_motor_bytes(left_speed)
     r_dir, r_pwm = to_motor_bytes(right_speed)
-    data = bytearray([l_dir, l_pwm, r_dir, r_pwm])
+    data = bytearray([r_dir, r_pwm,l_dir, l_pwm]) # TODO: SWAP here and in ARDUINO M4->left and M3->Right!!
     length = len(data)
     msg = bytearray([START_BYTE, ID_CMD_RPM, length]) + data
     checksum = 0

@@ -27,20 +27,20 @@ def generate_launch_description():
             parameters=[mini_bot_params],
             output='screen'
         ),
-        # Node(
-        #     package='mini_bot',
-        #     executable='navigation_node',
-        #     name='navigation_node',
-        #     parameters=[mini_bot_params, config_params['navigation']],
-        #     output='screen'
-        # ),
-        # Node(
-        #     package='mini_bot',
-        #     executable='controller_node',
-        #     name='controller_node',
-        #     parameters=[mini_bot_params, config_params['controller']],
-        #     output='screen'
-        # ),
+        Node(
+            package='mini_bot',
+            executable='navigation_node',
+            name='navigation_node',
+            parameters=[mini_bot_params, config_params['navigation']],
+            output='screen'
+        ),
+        Node(
+            package='mini_bot',
+            executable='controller_node',
+            name='controller_node',
+            parameters=[mini_bot_params, config_params['controller']],
+            output='screen'
+        ),
         # Node(
         #     package='tf2_ros',
         #     executable='static_transform_publisher',
