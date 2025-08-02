@@ -19,6 +19,8 @@ navigation_node:
 # Parameters for the controller_node
 controller_node:
   ros__parameters:
+    max_v: 0.2  #m/s
+    max_w: 1.57 #rad/s
     wheel_radius: 0.0325
     wheel_base: 0.1
     dt: 0.1

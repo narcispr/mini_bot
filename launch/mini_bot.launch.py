@@ -31,20 +31,20 @@ def generate_launch_description():
             parameters=[config_path],
             output='screen'
         ),
-        # Node(
-        #     package='tf2_ros',
-        #     executable='static_transform_publisher',
-        #     name='range_static_tf',
-        #     arguments=['0.05', '0.0', '0.0', '0', '0', '0', 'base_link', 'range_link'],
-        #     output='screen'
-        # ),
-        # Node(
-        #     package='tf2_ros',
-        #     executable='static_transform_publisher',
-        #     name='camera_static_tf',
-        #     arguments=['0.05', '0.0', '0.05', '0', '0', '0', 'base_link', 'camera_link'],
-        #     output='screen'
-        # ),
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='range_static_tf',
+            arguments=['0.05', '0.0', '0.0', '0', '0', '0', 'base_link', 'range_link'],
+            output='screen'
+        ),
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='camera_static_tf',
+            arguments=['0.05', '0.0', '0.05', '0', '0', '0', 'base_link', 'camera_link'],
+            output='screen'
+        ),
         # Node(
         #     package='usb_cam',
         #     executable='usb_cam_node_exe',
