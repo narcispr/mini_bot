@@ -53,6 +53,12 @@ class ControllerNode(Node):
         # Store current velocities
         self.current_v = 0.0
         self.current_w = 0.0
+        self.last_velocity_time = 0.0
+
+        # Store desired velocities
+        self.desired_v = 0.0
+        self.desired_w = 0.0
+        self.desired_last_time = self.get_clock().now()
 
         # PID controllers
         self.v_pid = PID(kp=v_pid_kp, ki=v_pid_ki, kd=v_pid_kd, integral_max=v_pid_integral_max)
@@ -74,6 +80,9 @@ class ControllerNode(Node):
         self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
         self.create_subscription(JointState, 'joint_states', self.joint_state_callback, 10)
 
+        # Create a timer to apply velocities
+        self.create_timer(self.dt, self.apply_velocity)
+
         # Service server
         self.calibrate_service = self.create_service(Trigger, 'calibrate', self.calibrate_callback)
 
@@ -85,31 +94,58 @@ class ControllerNode(Node):
             self.get_logger().debug(f'Left wheel velocity: {msg.velocity[0]}, Right wheel velocity: {msg.velocity[1]}')
 
     def cmd_vel_callback(self, msg: Twist):
+        # Log the received cmd_vel message
+        self.desired_v = msg.linear.x
+        self.desired_w = msg.angular.z
+        self.desired_last_time = self.get_clock().now()
+
+    def odom_callback(self, msg: Odometry):
+        # Store current linear and angular velocities
+        self.current_v = msg.twist.twist.linear.x
+        self.current_w = msg.twist.twist.angular.z
+        self.last_velocity_time = self.get_clock().now().nanoseconds / 1e9
+
+        def apply_velocity(self):
         # self.get_logger().info(f'Received cmd_vel: linear={msg.linear.x}, angular={msg.angular.z}')
         if self.calibrating:
             return # Ignore cmd_vel during calibration
 
-        # Get desired linear and angular velocities
-        v_feed_forward = msg.linear.x
-        w_feed_forward = msg.angular.z
-
         # Calculate time delta
         now = self.get_clock().now()
-        # TODO: cmd_vel can be discrete, so using the last time may not work well
-        dt = 0.1 #(now - self.last_time).nanoseconds / 1e9
+        dt = (now - self.last_time).nanoseconds / 1e9
         self.last_time = now
 
-        # Calculate errors
-        v_error = v_feed_forward - self.current_v
-        w_error = w_feed_forward - self.current_w
+        # Get desired linear and angular velocities
+        if (now - self.desired_last_time).nanoseconds / 1e9 > 1.0:
+            # Desired velocity too old, stop the robot
+            self.desired_v = 0.0
+            self.desired_w = 0.0
+        
+        # set feed-forward velocities
+        v_feed_forward = self.desired_v
+        w_feed_forward = self.desired_w
 
-        # Get PID corrections
-        v_correction = self.v_pid.update(v_error, dt)
-        w_correction = self.w_pid.update(w_error, dt)
+        # Apply the PID controllers to the feed-forward velocities
+        if (now - self.last_velocity_time).nanoseconds / 1e9 > 0.2:
+            self.get_logger().warn('Last odometry message is too old, skipping PID control.')
+            v_correction = 0.0
+            w_correction = 0.0
+        else:
+            # Calculate errors
+            v_error = v_feed_forward - self.current_v
+            w_error = w_feed_forward - self.current_w
 
+            # Get PID corrections
+            v_correction = self.v_pid.update(v_error, dt)
+            w_correction = self.w_pid.update(w_error, dt)
+
+        # TODO: For now, we will not use PID corrections
+        v_correction = 0.0
+        w_correction = 0.0
+        
         # Final velocities
-        v = v_feed_forward #+ v_correction
-        w = w_feed_forward #+ w_correction
+        v = v_feed_forward + v_correction
+        w = w_feed_forward + w_correction
 
         # Inverse kinematics for a differential drive robot
         vr_rads = ((2 * v) + (w * self.wheel_base)) / (2 * self.wheel_radius)
@@ -119,6 +155,7 @@ class ControllerNode(Node):
         left_pwm = np.interp(vl_rads, self.velocity_to_pwm_lut_left[:, 0], self.velocity_to_pwm_lut_left[:, 1])
         right_pwm = np.interp(vr_rads, self.velocity_to_pwm_lut_right[:, 0], self.velocity_to_pwm_lut_right[:, 1])
 
+        # TODO: For now, we will not smooth the PWM output
         # Smooth the PWM output
         # delta_left = left_pwm - self.last_left_pwm
         # if abs(delta_left) > self.max_delta_pwm:
@@ -132,11 +169,6 @@ class ControllerNode(Node):
         # self.last_right_pwm = right_pwm
 
         self.send_pwm_command(int(left_pwm), int(right_pwm))
-
-    def odom_callback(self, msg: Odometry):
-        # Store current linear and angular velocities
-        self.current_v = msg.twist.twist.linear.x
-        self.current_w = msg.twist.twist.angular.z
 
     def send_pwm_command(self, left_pwm, right_pwm):
         pwm_msg = Int16MultiArray()
