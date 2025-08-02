@@ -53,7 +53,7 @@ class ControllerNode(Node):
         # Store current velocities
         self.current_v = 0.0
         self.current_w = 0.0
-        self.last_velocity_time = 0.0
+        self.last_velocity_time = self.get_clock().now()
 
         # Store desired velocities
         self.desired_v = 0.0
@@ -103,9 +103,9 @@ class ControllerNode(Node):
         # Store current linear and angular velocities
         self.current_v = msg.twist.twist.linear.x
         self.current_w = msg.twist.twist.angular.z
-        self.last_velocity_time = self.get_clock().now().nanoseconds / 1e9
+        self.last_velocity_time = self.get_clock().now()
 
-        def apply_velocity(self):
+    def apply_velocity(self):
         # self.get_logger().info(f'Received cmd_vel: linear={msg.linear.x}, angular={msg.angular.z}')
         if self.calibrating:
             return # Ignore cmd_vel during calibration
