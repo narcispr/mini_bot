@@ -191,15 +191,15 @@ class ControllerNode(Node):
             self.desired_v = 0.0
         else:
             # Use PID for distance to get linear velocity
-            self.desired_v = self.dist_pid.update(distance_to_goal, dt)
+            self.desired_v = 0.2 # self.dist_pid.update(distance_to_goal, dt)
             # Clamp the velocity
             self.desired_v = np.clip(self.desired_v, -self.max_v_goal, self.max_v_goal)
 
         # Use PID for angle to get angular velocity
-        self.desired_w = self.angle_pid.update(angle_error, dt)
+        self.desired_w = np.sign(angle_error) * 2.0 # self.angle_pid.update(angle_error, dt)
         # Clamp the velocity
         self.desired_w = np.clip(self.desired_w, -self.max_w_goal, self.max_w_goal)
-        
+        self.get_logger().info(f'Goto goal: v={self.desired_v}, w={self.desired_w}, distance={distance_to_goal}, angle_error={angle_error}')
         self.desired_last_time = now
 
 
