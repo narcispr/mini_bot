@@ -116,7 +116,8 @@ class NavigationNode(Node):
         odom_msg.pose.pose.orientation.y = quat[1]
         odom_msg.pose.pose.orientation.z = quat[2]
         odom_msg.pose.pose.orientation.w = quat[3]
-
+        self.get_logger().info(f'Publishing odometry: x={self.pose.x}, y={self.pose.y}, theta={self.pose.theta}')
+        
         # Set twist
         odom_msg.twist.twist.linear.x = self.v
         odom_msg.twist.twist.angular.z = self.w
