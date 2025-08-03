@@ -35,6 +35,11 @@ controller_node:
       ki: 0.0
       kd: 0.2
       integral_max: 0.1
+    angle_pid:
+      kp: 10.0
+      ki: 0.0
+      kd: 0.0
+      integral_max: 0.0
     # The LUT is now a flat list, which will be reshaped in the node
     velocity_to_pwm_lut_left:
       - -6.0

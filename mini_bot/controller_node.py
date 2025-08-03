@@ -181,13 +181,13 @@ class ControllerNode(Node):
             self.goal_pose = None
             self.desired_v = 0.0
             self.desired_w = 0.0
-            self.dist_pid.reset()
-            self.angle_pid.reset()
+            # self.dist_pid.reset()
+            # self.angle_pid.reset()
             return
 
         # --- Use PID controllers to get desired velocities ---
         # If the angle error is large, prioritize turning
-        if abs(angle_error) > 0.2: # ~11.5 degrees
+        if abs(angle_error) > 0.3: # ~17 degrees
             self.desired_v = 0.0
         else:
             # Use PID for distance to get linear velocity
@@ -196,7 +196,7 @@ class ControllerNode(Node):
             self.desired_v = np.clip(self.desired_v, -self.max_v_goal, self.max_v_goal)
 
         # Use PID for angle to get angular velocity
-        self.desired_w = np.sign(angle_error) * 2.0 # self.angle_pid.update(angle_error, dt)
+        self.desired_w = self.angle_pid.update(angle_error, dt)
         # Clamp the velocity
         self.desired_w = np.clip(self.desired_w, -self.max_w_goal, self.max_w_goal)
         self.get_logger().info(f'Goto goal: v={self.desired_v}, w={self.desired_w}, distance={distance_to_goal}, angle_error={angle_error}')
