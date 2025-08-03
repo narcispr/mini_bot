@@ -37,6 +37,8 @@ class MiniBotNode(Node):
         self.pulses_idx = 0
         self.left_pwm = 0
         self.right_pwm = 0
+        self.left_wheel_angle = 0.0
+        self.right_wheel_angle = 0.0
         
         self.last_pwm_cmd = self.get_clock().now()
 
@@ -82,8 +84,17 @@ class MiniBotNode(Node):
                 value = payload[0] | (payload[1] << 8)
                 self.publish_range(value)
             if msg_id == coms.ID_SENSOR_ENCODERS and len(payload) == 2:
-                self.all_pulses[0, self.pulses_idx] = payload[0]
-                self.all_pulses[1, self.pulses_idx] = payload[1]
+                pulses_left = payload[0]
+                pulses_right = payload[1]
+
+                # Update wheel angles
+                angle_increment_left = np.sign(self.left_pwm) * pulses_left * (2 * np.pi / self.pulses_per_revolution)
+                angle_increment_right = np.sign(self.right_pwm) * pulses_right * (2 * np.pi / self.pulses_per_revolution)
+                self.left_wheel_angle += angle_increment_left
+                self.right_wheel_angle += angle_increment_right
+
+                self.all_pulses[0, self.pulses_idx] = pulses_left
+                self.all_pulses[1, self.pulses_idx] = pulses_right
                 self.pulses_idx = (self.pulses_idx + 1) % self.pulses_window
                 self.publish_joint_state()
             if msg_id == coms.ID_SENSOR_COMPASS and len(payload) == 6:
@@ -116,6 +127,7 @@ class MiniBotNode(Node):
         joint_state = JointState()
         joint_state.header.stamp = self.get_clock().now().to_msg()
         joint_state.name = ['left_wheel_joint', 'right_wheel_joint']
+        joint_state.position = [self.left_wheel_angle, self.right_wheel_angle]
         joint_state.velocity = [vel_left, vel_right]
         self.joint_state_pub.publish(joint_state)
 
