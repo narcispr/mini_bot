@@ -9,21 +9,7 @@ from tf2_ros import TransformBroadcaster
 import numpy as np
 
 
-def euler_to_quaternion(roll, pitch, yaw):
-    """Converts Euler angles to a quaternion."""
-    cy = np.cos(yaw * 0.5)
-    sy = np.sin(yaw * 0.5)
-    cp = np.cos(pitch * 0.5)
-    sp = np.sin(pitch * 0.5)
-    cr = np.cos(roll * 0.5)
-    sr = np.sin(roll * 0.5)
-
-    qx = sr * cp * cy - cr * sp * sy
-    qy = cr * sp * cy + sr * cp * sy
-    qz = cr * cp * sy - sr * sp * cy
-    qw = cr * cp * cy + sr * sp * sy
-
-    return [qx, qy, qz, qw]
+from mini_bot.utils.utils import euler_to_quaternion
 
 
 class NavigationNode(Node):
