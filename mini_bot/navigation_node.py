@@ -49,8 +49,7 @@ class NavigationNode(Node):
 
         # Init publishers and subscribers
         self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
-        self.tf_broadcaster = TransformBroadcaster(self)
-
+       
         self.subscription_js = self.create_subscription(
             JointState,
             'joint_states',
@@ -74,7 +73,7 @@ class NavigationNode(Node):
         
         # Wheel velocity to robot linear and angular velocity 
         self.v = (vl + vr)/2
-        self.w = (vl - vr)/(self.l)
+        self.w = (vr - vl)/(self.l)
         
         now = self.get_clock().now()
         dt = (now - self.last_time).nanoseconds / 1e9
@@ -125,20 +124,6 @@ class NavigationNode(Node):
         # Publish Odometry message
         self.odom_pub.publish(odom_msg)
 
-        # Broadcast transform
-        t = TransformStamped()
-        t.header.stamp = odom_msg.header.stamp
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'base_link'
-        t.transform.translation.x = self.pose.x
-        t.transform.translation.y = self.pose.y
-        t.transform.translation.z = 0.0
-        t.transform.rotation.x = quat[0]
-        t.transform.rotation.y = quat[1]
-        t.transform.rotation.z = quat[2]
-        t.transform.rotation.w = quat[3]
-
-        self.tf_broadcaster.sendTransform(t)
 
 def main(args=None):
     rclpy.init(args=args)
