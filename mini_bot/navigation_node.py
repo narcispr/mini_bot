@@ -49,6 +49,7 @@ class NavigationNode(Node):
 
         # Init publishers and subscribers
         self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
+        self.tf_broadcaster = TransformBroadcaster(self)
        
         self.subscription_js = self.create_subscription(
             JointState,
@@ -100,9 +101,10 @@ class NavigationNode(Node):
         self.last_theta_time = self.get_clock().now()
 
     def publish_odometry(self):
+        now_msg = self.get_clock().now().to_msg()
         # Create Odometry message
         odom_msg = Odometry()
-        odom_msg.header.stamp = self.get_clock().now().to_msg()
+        odom_msg.header.stamp = now_msg
         odom_msg.header.frame_id = 'odom'
         odom_msg.child_frame_id = 'base_link'
 
@@ -123,6 +125,20 @@ class NavigationNode(Node):
 
         # Publish Odometry message
         self.odom_pub.publish(odom_msg)
+
+        # Broadcast the transform
+        t = TransformStamped()
+        t.header.stamp = now_msg
+        t.header.frame_id = 'odom'
+        t.child_frame_id = 'base_link'
+        t.transform.translation.x = self.pose.x
+        t.transform.translation.y = self.pose.y
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = quat[0]
+        t.transform.rotation.y = quat[1]
+        t.transform.rotation.z = quat[2]
+        t.transform.rotation.w = quat[3]
+        self.tf_broadcaster.sendTransform(t)
 
 
 def main(args=None):
