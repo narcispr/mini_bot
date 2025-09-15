@@ -46,9 +46,9 @@ The software for the MiniBot robot is divided in two parts: the Arduino code and
 The Arduino code is responsible for controlling the motors and reading the sensors. It can be found in the [arduino](arduino) directory. To upload the code to your Arduino board, open the `firmware.ino` file in the Arduino IDE and upload it to your board.
 
 ### Raspberry Pi Code
-The Raspberry Pi code is responsible for higher-level functions such as image processing and navigation. A ROS2 package is available in this repository. To use it, you will need to have ROS2 installed on your Raspberry Pi.
+The Raspberry Pi code is responsible for higher-level functions such as image processing and navigation. A ROS2 package is available in this repository. To use it, you will need to have ROS2 installed on your Raspberry Pi. ROS2 Jazzy has been the one used for testing, but other versions may work as well.
 
-There is another repository with the MiniBot2 description available at [https://github.com/narcispr/mini_bot_description](https://github.com/narcispr/mini_bot_description).
+There is another repository with the MiniBot description available at [https://github.com/narcispr/mini_bot_description](https://github.com/narcispr/mini_bot_description).
 
 ## To be done
 
