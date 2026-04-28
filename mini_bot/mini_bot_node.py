@@ -8,6 +8,7 @@ import math
 import serial
 import threading
 import struct
+import time
 
 import numpy as np
 import mini_bot.utils.bot_comms as coms
@@ -18,18 +19,26 @@ class MiniBotNode(Node):
 
         # Declare parameters
         self.declare_parameter('serial_port', '/dev/ttyACM0')
+        self.declare_parameter('serial_timeout', 0.1)
         self.declare_parameter('dt', 0.05)
         self.declare_parameter('pulses_window', 5)
         self.declare_parameter('pulses_per_revolution', 20)
+        self.declare_parameter('serial_no_data_warn_sec', 2.0)
+        self.declare_parameter('diagnostics_period_sec', 5.0)
 
         # Get parameters
         serial_port = self.get_parameter('serial_port').get_parameter_value().string_value
+        serial_timeout = self.get_parameter('serial_timeout').get_parameter_value().double_value
         self.dt = self.get_parameter('dt').get_parameter_value().double_value
         self.pulses_window = self.get_parameter('pulses_window').get_parameter_value().integer_value
         self.pulses_per_revolution = self.get_parameter('pulses_per_revolution').get_parameter_value().integer_value
+        self.serial_no_data_warn_sec = self.get_parameter('serial_no_data_warn_sec').get_parameter_value().double_value
+        diagnostics_period = self.get_parameter('diagnostics_period_sec').get_parameter_value().double_value
 
         # Serial port for Arduino communications
-        self.ser = serial.Serial(serial_port, 115200, timeout=1)
+        self.ser = serial.Serial(serial_port, 115200, timeout=serial_timeout, write_timeout=serial_timeout)
+        self.ser.reset_input_buffer()
+        self.ser.reset_output_buffer()
         self.serial_lock = threading.Lock()
 
         # Global vars
@@ -41,6 +50,14 @@ class MiniBotNode(Node):
         self.right_wheel_angle = 0.0
         
         self.last_pwm_cmd = self.get_clock().now()
+        self.last_sensor_msg_monotonic = time.monotonic()
+        self.last_no_data_warn_monotonic = 0.0
+        self.rx_total = 0
+        self.rx_by_id = {
+            coms.ID_SENSOR_RANGE: 0,
+            coms.ID_SENSOR_ENCODERS: 0,
+            coms.ID_SENSOR_COMPASS: 0,
+        }
 
         # ROS interfaces
         self.range_pub = self.create_publisher(Range, 'range', 10)
@@ -52,6 +69,12 @@ class MiniBotNode(Node):
         
         # Timers
         self.create_timer(self.dt, self.write_motors)
+        if diagnostics_period > 0.0:
+            self.create_timer(diagnostics_period, self.log_diagnostics)
+
+        self.get_logger().info(
+            f'Serial opened on {serial_port} @115200 (timeout={serial_timeout:.3f}s).'
+        )
         # Start a separate thread for reading sensors
         self.read_sensors_thread = threading.Thread(target=self.read_sensors_loop, daemon=True)
         self.read_sensors_thread.start()
@@ -64,22 +87,37 @@ class MiniBotNode(Node):
         self.last_pwm_cmd = self.get_clock().now()
 
     def read_sensors_loop(self):
+        self.get_logger().info('Sensor read thread started.')
         while rclpy.ok():
             try:
-                self.read_sensors()
+                # Drain a burst of queued serial messages to avoid RX backlog.
+                msgs_read = 0
+                max_msgs_per_cycle = 50
+                while msgs_read < max_msgs_per_cycle and self.read_sensors():
+                    msgs_read += 1
+
+                if msgs_read == max_msgs_per_cycle:
+                    self.get_logger().warn('Serial backlog detected: reached max messages per cycle.')
             except serial.SerialException as e:
                 self.get_logger().error(f'Serial error: {e}')
                 break
             except Exception as e:
                 self.get_logger().error(f'Error reading sensors: {e}')
-            rclpy.spin_once(self, timeout_sec=self.dt/10.0)
+            # Avoid nested spinning from a worker thread; main thread already spins the node.
+            time.sleep(max(0.001, self.dt / 10.0))
+
+        self.get_logger().warn('Sensor read thread stopped.')
     
     def read_sensors(self):
-        with self.serial_lock:
-            data = coms.read_message(self.ser)
+        data = coms.read_message(self.ser, lock=self.serial_lock)
 
         if data:
             msg_id, payload = data
+            self.last_sensor_msg_monotonic = time.monotonic()
+            self.rx_total += 1
+            if msg_id in self.rx_by_id:
+                self.rx_by_id[msg_id] += 1
+
             if msg_id == coms.ID_SENSOR_RANGE and len(payload) == 2:
                 value = payload[0] | (payload[1] << 8)
                 self.publish_range(value)
@@ -99,6 +137,21 @@ class MiniBotNode(Node):
                 self.publish_joint_state()
             if msg_id == coms.ID_SENSOR_COMPASS and len(payload) == 6:
                 self._process_compass_data(payload)
+            return True
+        else:
+            now = time.monotonic()
+            no_data_for = now - self.last_sensor_msg_monotonic
+            should_warn = (
+                no_data_for >= self.serial_no_data_warn_sec
+                and (now - self.last_no_data_warn_monotonic) >= self.serial_no_data_warn_sec
+            )
+            if should_warn:
+                self.last_no_data_warn_monotonic = now
+                self.get_logger().warn(
+                    f'No complete serial frame for {no_data_for:.2f}s '
+                    f'(in_waiting={self.ser.in_waiting}, pwm=({self.left_pwm}, {self.right_pwm})).'
+                )
+            return False
 
     def write_motors(self):
         # If no PWM command has been sent in the last second, stop the motors
@@ -111,8 +164,26 @@ class MiniBotNode(Node):
         # Send PWM values to the motors
         msg_bytes = coms.build_pwm_message(self.left_pwm, self.right_pwm)
         
-        with self.serial_lock:
-            self.ser.write(msg_bytes)
+        try:
+            with self.serial_lock:
+                self.ser.write(msg_bytes)
+        except serial.SerialTimeoutException:
+            self.get_logger().warn('Serial write timeout while sending motor PWM command.')
+        except serial.SerialException as e:
+            self.get_logger().error(f'Serial write error: {e}')
+
+    def log_diagnostics(self):
+        no_data_for = time.monotonic() - self.last_sensor_msg_monotonic
+        self.get_logger().info(
+            'Serial diagnostics: '
+            f'no_data_for={no_data_for:.2f}s, '
+            f'in_waiting={self.ser.in_waiting}, '
+            f'rx_total={self.rx_total}, '
+            f'range={self.rx_by_id.get(coms.ID_SENSOR_RANGE, 0)}, '
+            f'encoders={self.rx_by_id.get(coms.ID_SENSOR_ENCODERS, 0)}, '
+            f'compass={self.rx_by_id.get(coms.ID_SENSOR_COMPASS, 0)}, '
+            f'pwm=({self.left_pwm}, {self.right_pwm})'
+        )
 
     def publish_joint_state(self):
         # Publish joint state velocities (rad/s) to /joint_states
@@ -214,6 +285,10 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        pass
+    try:
+        node.ser.close()
+    except Exception:
         pass
     node.destroy_node()
     rclpy.shutdown()

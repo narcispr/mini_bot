@@ -28,45 +28,68 @@ def build_pwm_message(left_speed, right_speed):
     msg += bytearray([checksum, END_BYTE])
     return msg
 
-def read_message(ser):
-    state = 0
-    msg = []
+def read_message(ser, lock=None):
+    """Read and decode one framed message from serial if available.
+
+    Parser state is persisted across calls so partial frames are not lost.
+    """
+    if not hasattr(read_message, '_state'):
+        read_message._state = 0
+        read_message._msg_id = 0
+        read_message._length = 0
+        read_message._payload = []
+        read_message._checksum = 0
+
+    lock_to_use = lock if lock is not None else serial_lock
+    max_payload_length = 64
+
     while ser.in_waiting:
-        with serial_lock:
-            byte = ser.read(1)
-        if not byte:
+        with lock_to_use:
+            raw = ser.read(1)
+
+        if not raw:
             return None
-        byte = byte[0]
-        if state == 0:
+
+        byte = raw[0]
+
+        if read_message._state == 0:
             if byte == START_BYTE:
-                msg = [byte]
-                state = 1
-        elif state == 1:
-            msg.append(byte)
-            state = 2
-        elif state == 2:
-            msg.append(byte)
-            length = byte
-            state = 3
-            data_bytes = []
-        elif state == 3:
-            data_bytes.append(byte)
-            if len(data_bytes) == length:
-                msg.extend(data_bytes)
-                state = 4
-        elif state == 4:
-            checksum = byte
-            msg.append(byte)
-            state = 5
-        elif state == 5:
-            if byte == END_BYTE:
-                msg.append(byte)
-                computed = 0
-                for b in msg[1:-2]:
-                    computed ^= b
-                if checksum == computed:
-                    return msg[1], msg[3:-2]
-            state = 0
+                read_message._state = 1
+
+        elif read_message._state == 1:
+            read_message._msg_id = byte
+            read_message._checksum = byte
+            read_message._state = 2
+
+        elif read_message._state == 2:
+            read_message._length = byte
+            read_message._checksum ^= byte
+            read_message._payload = []
+            if read_message._length > max_payload_length:
+                read_message._state = 0
+            else:
+                read_message._state = 3
+
+        elif read_message._state == 3:
+            read_message._payload.append(byte)
+            read_message._checksum ^= byte
+            if len(read_message._payload) >= read_message._length:
+                read_message._state = 4
+
+        elif read_message._state == 4:
+            received_checksum = byte
+            read_message._state = 5
+            read_message._received_checksum = received_checksum
+
+        elif read_message._state == 5:
+            if byte == END_BYTE and read_message._received_checksum == read_message._checksum:
+                msg_id = read_message._msg_id
+                payload = read_message._payload[:]
+                read_message._state = 0
+                return msg_id, payload
+
+            read_message._state = 0
+
     return None
 
 # ⬅️ THREAD 1: Lectura sèrie
