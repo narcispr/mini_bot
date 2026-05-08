@@ -19,12 +19,14 @@ navigation_node:
 # Parameters for the controller_node
 controller_node:
   ros__parameters:
-    max_v: 0.2  #m/s
-    max_w: 1.57 #rad/s
+    max_v: 0.5  #m/s
+    max_w: 3.14 #rad/s
     wheel_radius: 0.0325
     wheel_base: 0.16
     dt: 0.1
     max_delta_pwm: 25.0
+    max_pwm: 255.0
+    cmd_vel_timeout: 0.2
     v_pid:
       kp: 0.0
       ki: 0.0
@@ -40,7 +42,32 @@ controller_node:
       ki: 0.0
       kd: 0.0
       integral_max: 0.0
-    # The LUT is now a flat list, which will be reshaped in the node
+    # LUTs used by controller_lite_node.py. They are flat lists reshaped in the node.
+    velocity_to_pwm_lut_v:
+      - 0.0
+      - 0.0
+      - 0.01
+      - 125.0
+      - 0.25
+      - 150.0
+      - 0.4
+      - 200.0
+      - 0.5
+      - 225.0
+      - 0.6
+      - 255.0
+    velocity_to_pwm_lut_w:
+      - 0.0
+      - 0.0
+      - 0.01
+      - 125.0
+      - 0.85
+      - 135.0
+      - 2.3
+      - 155.0
+      - 4.0
+      - 185.0
+    # LUTs used by controller_node.py. They are flat lists reshaped in the node.
     velocity_to_pwm_lut_left:
       - -6.0
       - -255.0

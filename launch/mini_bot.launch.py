@@ -26,11 +26,18 @@ def generate_launch_description():
         ),
         Node(
             package='mini_bot',
-            executable='controller_node',
+            executable='controller_lite_node',
             name='controller_node',
             parameters=[config_path],
             output='screen'
         ),
+        # Node(
+        #     package='mini_bot',
+        #     executable='controller_node',
+        #     name='controller_node',
+        #     parameters=[config_path],
+        #     output='screen'
+        # ),
         
         # Node(
         #     package='usb_cam',
