@@ -50,6 +50,81 @@ The Raspberry Pi code is responsible for higher-level functions such as image pr
 
 There is another repository with the MiniBot description available at [https://github.com/narcispr/mini_bot_description](https://github.com/narcispr/mini_bot_description).
 
+### ROS dependencies
+
+Install the package dependencies from the workspace root:
+
+```bash
+cd ~/ros2_ws
+rosdep install --from-paths src --ignore-src -r -y
+```
+
+For OctoMap support on ROS 2 Jazzy, install:
+
+```bash
+sudo apt update
+sudo apt install ros-jazzy-octomap-server
+```
+
+Optional RViz plugins for visualizing OctoMap messages:
+
+```bash
+sudo apt install ros-jazzy-octomap-rviz-plugins
+```
+
+If the USB camera node is enabled in `launch/mini_bot.launch.py`, also install:
+
+```bash
+sudo apt install ros-jazzy-usb-cam
+```
+
+Build and source the workspace after installing dependencies:
+
+```bash
+cd ~/ros2_ws
+colcon build --packages-select mini_bot
+source install/setup.bash
+```
+
+### Running with OctoMap Server
+
+`launch/run_robot.launch.py` starts the MiniBot nodes, `robot_state_publisher`, and `octomap_server`. The OctoMap server consumes the MiniBot ultrasonic point cloud:
+
+- input topic: `/range_pointcloud`
+- OctoMap subscription: `cloud_in`, remapped to `/range_pointcloud`
+- sensor frame: `range_link`
+- fixed map frame: `odom`
+- resolution: `0.05` m
+- maximum sensor range: `3.0` m
+
+Run it with:
+
+```bash
+ros2 launch mini_bot run_robot.launch.py
+```
+
+The required TF chain is:
+
+```text
+odom -> base_link -> range_link
+```
+
+`navigation_node` publishes `odom -> base_link`, and `robot_state_publisher` publishes `base_link -> range_link` from the URDF in `mini_bot_description`.
+
+Useful checks:
+
+```bash
+ros2 topic info /range_pointcloud
+ros2 run tf2_ros tf2_echo odom range_link
+ros2 topic echo /projected_map --once
+```
+
+The most useful OctoMap outputs are:
+
+- `/projected_map`: 2D occupancy grid projection.
+- `/octomap_binary`: compact 3D OctoMap.
+- `/octomap_full`: full 3D OctoMap.
+
 ## To be done
 
 - [ ] MiniBot power is divided in two sources: one for the motors and another for the Raspberry Pi. A better power management system is needed.
