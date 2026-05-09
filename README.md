@@ -125,6 +125,145 @@ The most useful OctoMap outputs are:
 - `/octomap_binary`: compact 3D OctoMap.
 - `/octomap_full`: full 3D OctoMap.
 
+### Magnetometer calibration
+
+The robot can use the magnetometer heading as an external orientation source by setting:
+
+```yaml
+navigation_node:
+  ros__parameters:
+    use_external_theta: True
+```
+
+There are two simple calibration layers:
+
+1. `mini_bot_node` corrects the raw X/Y magnetometer readings before publishing `/compass_angle`.
+2. `navigation_node` maps measured headings to robot-relative headings with `external_theta_calibration_lut`.
+
+#### Automatic raw X/Y calibration
+
+The `mini_bot_node` provides a service that rotates the robot, records magnetometer min/max values, updates the raw X/Y calibration parameters, and writes them back to `config/mini_bot.yaml`.
+
+For calibration, first run with the compass disabled in `config/mini_bot.yaml`:
+
+```yaml
+navigation_node:
+  ros__parameters:
+    use_external_theta: False
+```
+
+Start the robot on a flat surface with enough free space to rotate:
+
+```bash
+ros2 launch mini_bot run_robot.launch.py
+```
+
+Call the service:
+
+```bash
+ros2 service call /calibrate_magnetometer std_srvs/srv/Trigger
+```
+
+By default, the robot commands `1.0 rad/s` for `10 s` on `/cmd_vel`. The service saves:
+
+```yaml
+mag_x_offset_uT
+mag_y_offset_uT
+mag_x_scale
+mag_y_scale
+```
+
+The service also reports the observed X/Y/Z ranges. After calibration, restart the robot. Then enable `use_external_theta: True` and tune the heading LUT below so the robot's initial forward direction maps to `0` degrees.
+
+The service parameters are:
+
+```yaml
+mini_bot_node:
+  ros__parameters:
+    mag_calibration_angular_velocity: 1.0
+    mag_calibration_duration_sec: 10.0
+    mag_calibration_config_file: "/home/narcis/ros2_ws/src/mini_bot/config/mini_bot.yaml"
+```
+
+#### Manual raw X/Y calibration
+
+Use this when `/compass_angle` does not cover the full `0..360` range, for example when it moves from `180` to `300` and then goes back to `180`. This usually means the X/Y magnetic readings are offset or stretched.
+
+Start the robot, then rotate it slowly through one full turn while watching `/imu/mag`:
+
+```bash
+ros2 topic echo /imu/mag
+```
+
+Record the minimum and maximum `magnetic_field.x` and `magnetic_field.y` values. The topic is in Teslas, while the YAML parameters below are in microteslas, so multiply the values by `1e6`.
+
+Calculate:
+
+```text
+x_offset = (x_max + x_min) / 2
+y_offset = (y_max + y_min) / 2
+
+x_radius = (x_max - x_min) / 2
+y_radius = (y_max - y_min) / 2
+avg_radius = (x_radius + y_radius) / 2
+
+mag_x_scale = avg_radius / x_radius
+mag_y_scale = avg_radius / y_radius
+```
+
+Then set these parameters in `config/mini_bot.yaml`:
+
+```yaml
+mini_bot_node:
+  ros__parameters:
+    mag_x_offset_uT: 0.0
+    mag_y_offset_uT: 0.0
+    mag_x_scale: 1.0
+    mag_y_scale: 1.0
+    mag_heading_offset_deg: 0.0
+```
+
+`mag_heading_offset_deg` is a final constant angle offset. Use it if the heading covers the full circle but `0` degrees does not match the robot's forward direction.
+
+#### Robot heading LUT
+
+After the raw X/Y calibration, measure four stable headings with the robot pointing forward, left, backward and right. Put the measured value first, then the corrected robot-relative heading:
+
+```yaml
+navigation_node:
+  ros__parameters:
+    use_external_theta: True
+    external_theta_calibration_lut:
+      - 40.0
+      - 0.0
+      - 150.0
+      - 90.0
+      - 280.0
+      - 180.0
+      - 355.0
+      - 270.0
+```
+
+The LUT is circular, so it can handle the `360 -> 0` wraparound.
+
+#### Sensor orientation
+
+ROS `base_link` convention is:
+
+```text
+X forward, Y left, Z up
+```
+
+If the magnetometer is mounted with sensor `Y` pointing forward, sensor `X` pointing right, and `Z` pointing up, the mounting is usable, but it is rotated relative to `base_link`. With the current heading formula this is typically equivalent to a `-90` degree correction, so you can use:
+
+```yaml
+mag_heading_offset_deg: 270.0
+```
+
+If your four-point heading LUT already maps forward to `0`, left to `90`, backward to `180`, and right to `270`, that LUT can absorb this offset too.
+
+Many GY-271 boards are sold with different chips. The Arduino firmware currently uses the `Adafruit_HMC5883_U` library. If an I2C scanner finds the sensor at `0x0D` instead of `0x1E`, the board is probably QMC5883L-compatible and the Arduino firmware should use a QMC5883L library instead.
+
 ## To be done
 
 - [ ] MiniBot power is divided in two sources: one for the motors and another for the Raspberry Pi. A better power management system is needed.

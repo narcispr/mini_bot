@@ -6,6 +6,7 @@ from geometry_msgs.msg import Pose2D
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
+import math
 import numpy as np
 
 
@@ -20,11 +21,16 @@ class NavigationNode(Node):
         self.declare_parameter('wheel_radius', 0.0325)
         self.declare_parameter('wheel_base', 0.1)
         self.declare_parameter('use_external_theta', True)
+        self.declare_parameter(
+            'external_theta_calibration_lut',
+            [0.0, 0.0, 90.0, 90.0, 180.0, 180.0, 270.0, 270.0],
+        )
 
         # Get parameters
         self.radius = self.get_parameter('wheel_radius').get_parameter_value().double_value
         self.l = self.get_parameter('wheel_base').get_parameter_value().double_value
         self.use_external_theta = self.get_parameter('use_external_theta').get_parameter_value().bool_value
+        self.external_theta_calibration_lut = self.load_external_theta_calibration_lut()
 
         # Initialize the differential drive robot state
         self.pose = Pose2D()
@@ -81,9 +87,44 @@ class NavigationNode(Node):
 
         self.publish_odometry()
 
+    def load_external_theta_calibration_lut(self):
+        lut_param = self.get_parameter('external_theta_calibration_lut').value
+        lut = np.array(lut_param, dtype=float)
+        if lut.size == 0:
+            return np.array([[0.0, 0.0], [360.0, 360.0]], dtype=float)
+        if lut.size % 2 != 0:
+            raise ValueError('external_theta_calibration_lut must contain measured/corrected degree pairs')
+
+        lut = lut.reshape(-1, 2)
+        lut[:, 0] = np.mod(lut[:, 0], 360.0)
+        lut[:, 1] = np.mod(lut[:, 1], 360.0)
+        lut = lut[np.argsort(lut[:, 0])]
+
+        if np.any(np.diff(lut[:, 0]) <= 0.0):
+            raise ValueError('external_theta_calibration_lut measured degree values must be unique')
+
+        return lut
+
+    def calibrate_external_theta(self, measured_deg):
+        if self.external_theta_calibration_lut.shape[0] < 2:
+            return measured_deg % 360.0
+
+        lut = self.external_theta_calibration_lut
+        measured = measured_deg % 360.0
+        measured_points = lut[:, 0]
+        corrected_points = np.rad2deg(np.unwrap(np.deg2rad(lut[:, 1])))
+
+        if measured < measured_points[0]:
+            measured += 360.0
+
+        measured_points = np.append(measured_points, measured_points[0] + 360.0)
+        corrected_points = np.append(corrected_points, corrected_points[0] + 360.0)
+
+        return float(np.interp(measured, measured_points, corrected_points) % 360.0)
+
     def orientation_callback(self, msg):
-        # Force heading to measured orientation (degrees)
-        self.pose.theta = rclpy.math.radians(msg.data)
+        corrected_theta_deg = self.calibrate_external_theta(float(msg.data))
+        self.pose.theta = math.radians(corrected_theta_deg)
         self.last_theta_time = self.get_clock().now()
 
     def publish_odometry(self):
