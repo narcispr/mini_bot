@@ -27,6 +27,18 @@ controller_node:
     max_delta_pwm: 25.0
     max_pwm: 255.0
     cmd_vel_timeout: 0.2
+    gain_pid: 0.5
+    # PID parameters used by controller_lite_node.py.
+    pid_v:
+      kp: 1.0
+      ki: 0.0
+      kd: 0.2
+      integral_max: 0.1
+    pid_w:
+      kp: 1.0
+      ki: 0.0
+      kd: 0.2
+      integral_max: 0.1
     v_pid:
       kp: 0.0
       ki: 0.0

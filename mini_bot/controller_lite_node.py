@@ -1,8 +1,10 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 from std_msgs.msg import Int16MultiArray
 import numpy as np
+from mini_bot.utils.pid import PID
 
 
 class ControllerNode(Node):
@@ -15,6 +17,15 @@ class ControllerNode(Node):
         self.declare_parameter('max_pwm', 255.0)
         self.declare_parameter('cmd_vel_timeout', 0.2)
         self.declare_parameter('dt', 0.05)
+        self.declare_parameter('gain_pid', 0.5)
+        self.declare_parameter('pid_v.kp', 1.0)
+        self.declare_parameter('pid_v.ki', 0.0)
+        self.declare_parameter('pid_v.kd', 0.2)
+        self.declare_parameter('pid_v.integral_max', 0.1)
+        self.declare_parameter('pid_w.kp', 1.0)
+        self.declare_parameter('pid_w.ki', 0.0)
+        self.declare_parameter('pid_w.kd', 0.2)
+        self.declare_parameter('pid_w.integral_max', 0.1)
 
         self.declare_parameter(
             'velocity_to_pwm_lut_v',
@@ -31,18 +42,39 @@ class ControllerNode(Node):
         self.max_pwm = self.get_parameter('max_pwm').get_parameter_value().double_value
         self.cmd_vel_timeout = self.get_parameter('cmd_vel_timeout').get_parameter_value().double_value
         self.dt = self.get_parameter('dt').get_parameter_value().double_value
+        self.gain_pid = self.get_parameter('gain_pid').get_parameter_value().double_value
+
+        pid_v_kp = self.get_parameter('pid_v.kp').get_parameter_value().double_value
+        pid_v_ki = self.get_parameter('pid_v.ki').get_parameter_value().double_value
+        pid_v_kd = self.get_parameter('pid_v.kd').get_parameter_value().double_value
+        pid_v_integral_max = self.get_parameter('pid_v.integral_max').get_parameter_value().double_value
+        pid_w_kp = self.get_parameter('pid_w.kp').get_parameter_value().double_value
+        pid_w_ki = self.get_parameter('pid_w.ki').get_parameter_value().double_value
+        pid_w_kd = self.get_parameter('pid_w.kd').get_parameter_value().double_value
+        pid_w_integral_max = self.get_parameter('pid_w.integral_max').get_parameter_value().double_value
 
         self.velocity_to_pwm_lut_v = self.load_lut('velocity_to_pwm_lut_v')
         self.velocity_to_pwm_lut_w = self.load_lut('velocity_to_pwm_lut_w')
+
+        # Store current velocities
+        self.current_v = 0.0
+        self.current_w = 0.0
+        self.last_odom_time = None
 
         # Store desired velocities
         self.desired_v = 0.0
         self.desired_w = 0.0
         self.desired_last_time = self.get_clock().now()
 
+        # PID controllers
+        self.pid_v = PID(kp=pid_v_kp, ki=pid_v_ki, kd=pid_v_kd, integral_max=pid_v_integral_max)
+        self.pid_w = PID(kp=pid_w_kp, ki=pid_w_ki, kd=pid_w_kd, integral_max=pid_w_integral_max)
+        self.last_pid_time = self.get_clock().now()
+
         # Publishers and subscribers
         self.pwm_pub = self.create_publisher(Int16MultiArray, 'pwm_setpoints', 10)
         self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
+        self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
 
         # Timers
         self.create_timer(self.dt, self.apply_velocity)
@@ -64,13 +96,40 @@ class ControllerNode(Node):
         self.desired_w = float(np.clip(msg.angular.z, -self.max_w, self.max_w))
         self.desired_last_time = self.get_clock().now()
 
+    def odom_callback(self, msg: Odometry):
+        self.current_v = msg.twist.twist.linear.x
+        self.current_w = msg.twist.twist.angular.z
+        self.last_odom_time = self.get_clock().now()
+
     def apply_velocity(self):
         now = self.get_clock().now()
+        dt = max((now - self.last_pid_time).nanoseconds / 1e9, 1e-6)
+        self.last_pid_time = now
+
         if (now - self.desired_last_time).nanoseconds / 1e9 > self.cmd_vel_timeout:
             self.desired_v = 0.0
             self.desired_w = 0.0
 
-        left_pwm, right_pwm = self.velocity_to_wheel_pwm(self.desired_v, self.desired_w)
+        v_pid = 0.0
+        w_pid = 0.0
+        odom_is_current = (
+            self.last_odom_time is not None
+            and (now - self.last_odom_time).nanoseconds / 1e9 <= self.cmd_vel_timeout
+        )
+        if odom_is_current:
+            v_error = self.desired_v - self.current_v
+            w_error = self.desired_w - self.current_w
+            v_pid = self.pid_v.update(v_error, dt)
+            w_pid = self.pid_w.update(w_error, dt)
+            v_pid = float(np.clip(v_pid, -self.max_v, self.max_v))
+            w_pid = float(np.clip(w_pid, -self.max_w, self.max_w))
+
+        v = self.desired_v + self.gain_pid * v_pid
+        w = self.desired_w + self.gain_pid * w_pid
+        v = float(np.clip(v, -self.max_v, self.max_v))
+        w = float(np.clip(w, -self.max_w, self.max_w))
+
+        left_pwm, right_pwm = self.velocity_to_wheel_pwm(v, w)
 
         left_pwm = float(np.clip(left_pwm, -self.max_pwm, self.max_pwm))
         right_pwm = float(np.clip(right_pwm, -self.max_pwm, self.max_pwm))
