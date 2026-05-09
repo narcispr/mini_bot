@@ -36,6 +36,21 @@ def generate_launch_description():
                 'use_sim_time': LaunchConfiguration('use_sim_time')
             }]
         ),
+        Node(
+            package='octomap_server',
+            executable='octomap_server_node',
+            name='octomap_server',
+            output='screen',
+            parameters=[{
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
+                'resolution': 0.05,
+                'frame_id': 'odom',
+                'sensor_model.max_range': 3.0,
+            }],
+            remappings=[
+                ('cloud_in', '/range_pointcloud'),
+            ],
+        ),
         # Node(
         #     package='rviz2',
         #     executable='rviz2',
