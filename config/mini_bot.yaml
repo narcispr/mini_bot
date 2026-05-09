@@ -2,7 +2,7 @@
 mini_bot_node:
   ros__parameters:
     wheel_radius: 0.0325
-    wheel_base: 0.16
+    wheel_base: 0.15
     dt: 0.05
     serial_port: "/dev/ttyACM0"
     pulses_window: 5
@@ -11,8 +11,8 @@ mini_bot_node:
 # Parameters for the navigation_node
 navigation_node:
   ros__parameters:
-    wheel_radius: 0.0325
-    wheel_base: 0.16
+    wheel_radius: 0.032
+    wheel_base: 0.15
     dt: 0.05
     use_external_theta: False
 
@@ -26,8 +26,8 @@ controller_node:
     dt: 0.1
     max_delta_pwm: 25.0
     max_pwm: 255.0
-    cmd_vel_timeout: 0.2
-    gain_pid: 0.5
+    cmd_vel_timeout: 0.5
+    gain_pid: 0.25
     # PID parameters used by controller_lite_node.py.
     pid_v:
       kp: 1.0
@@ -35,9 +35,9 @@ controller_node:
       kd: 0.2
       integral_max: 0.1
     pid_w:
-      kp: 1.0
+      kp: 1.5
       ki: 0.0
-      kd: 0.2
+      kd: 0.0
       integral_max: 0.1
     v_pid:
       kp: 0.0
@@ -58,7 +58,7 @@ controller_node:
     velocity_to_pwm_lut_v:
       - 0.0
       - 0.0
-      - 0.01
+      - 0.15
       - 125.0
       - 0.25
       - 150.0
@@ -71,7 +71,7 @@ controller_node:
     velocity_to_pwm_lut_w:
       - 0.0
       - 0.0
-      - 0.01
+      - 0.8
       - 125.0
       - 0.85
       - 135.0
