@@ -45,7 +45,7 @@ def generate_launch_description():
                 'use_sim_time': LaunchConfiguration('use_sim_time'),
                 'resolution': 0.05,
                 'frame_id': 'odom',
-                'sensor_model.max_range': 3.0,
+                'sensor_model.max_range': 1.5,
             }],
             remappings=[
                 ('cloud_in', '/range_pointcloud'),
