@@ -1,4 +1,5 @@
 import rclpy
+from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -25,40 +26,40 @@ class MiniBotNode(Node):
 
         # Declare parameters
         self.declare_parameter('serial_port', '/dev/ttyACM0')
-        self.declare_parameter('serial_timeout', 0.1)
-        self.declare_parameter('dt', 0.05)
+        self.declare_float_parameter('serial_timeout', 0.1)
+        self.declare_float_parameter('dt', 0.05)
         self.declare_parameter('pulses_window', 5)
         self.declare_parameter('pulses_per_revolution', 20)
-        self.declare_parameter('serial_no_data_warn_sec', 2.0)
-        self.declare_parameter('diagnostics_period_sec', 5.0)
-        self.declare_parameter('mag_x_offset_uT', 0.0)
-        self.declare_parameter('mag_y_offset_uT', 0.0)
-        self.declare_parameter('mag_x_scale', 1.0)
-        self.declare_parameter('mag_y_scale', 1.0)
-        self.declare_parameter('mag_heading_offset_deg', 0.0)
-        self.declare_parameter('mag_calibration_angular_velocity', 1.0)
-        self.declare_parameter('mag_calibration_duration_sec', 10.0)
+        self.declare_float_parameter('serial_no_data_warn_sec', 2.0)
+        self.declare_float_parameter('diagnostics_period_sec', 5.0)
+        self.declare_float_parameter('mag_x_offset_uT', 0.0)
+        self.declare_float_parameter('mag_y_offset_uT', 0.0)
+        self.declare_float_parameter('mag_x_scale', 1.0)
+        self.declare_float_parameter('mag_y_scale', 1.0)
+        self.declare_float_parameter('mag_heading_offset_deg', 0.0)
+        self.declare_float_parameter('mag_calibration_angular_velocity', 1.0)
+        self.declare_float_parameter('mag_calibration_duration_sec', 10.0)
         self.declare_parameter('mag_calibration_config_file', '')
 
         # Get parameters
         serial_port = self.get_parameter('serial_port').get_parameter_value().string_value
-        serial_timeout = self.get_parameter('serial_timeout').get_parameter_value().double_value
-        self.dt = self.get_parameter('dt').get_parameter_value().double_value
+        serial_timeout = self.get_float_parameter('serial_timeout')
+        self.dt = self.get_float_parameter('dt')
         self.pulses_window = self.get_parameter('pulses_window').get_parameter_value().integer_value
         self.pulses_per_revolution = self.get_parameter('pulses_per_revolution').get_parameter_value().integer_value
-        self.serial_no_data_warn_sec = self.get_parameter('serial_no_data_warn_sec').get_parameter_value().double_value
-        diagnostics_period = self.get_parameter('diagnostics_period_sec').get_parameter_value().double_value
-        self.mag_x_offset_uT = self.get_parameter('mag_x_offset_uT').get_parameter_value().double_value
-        self.mag_y_offset_uT = self.get_parameter('mag_y_offset_uT').get_parameter_value().double_value
-        self.mag_x_scale = self.get_parameter('mag_x_scale').get_parameter_value().double_value
-        self.mag_y_scale = self.get_parameter('mag_y_scale').get_parameter_value().double_value
-        self.mag_heading_offset_deg = self.get_parameter('mag_heading_offset_deg').get_parameter_value().double_value
-        self.mag_calibration_angular_velocity = self.get_parameter(
+        self.serial_no_data_warn_sec = self.get_float_parameter('serial_no_data_warn_sec')
+        diagnostics_period = self.get_float_parameter('diagnostics_period_sec')
+        self.mag_x_offset_uT = self.get_float_parameter('mag_x_offset_uT')
+        self.mag_y_offset_uT = self.get_float_parameter('mag_y_offset_uT')
+        self.mag_x_scale = self.get_float_parameter('mag_x_scale')
+        self.mag_y_scale = self.get_float_parameter('mag_y_scale')
+        self.mag_heading_offset_deg = self.get_float_parameter('mag_heading_offset_deg')
+        self.mag_calibration_angular_velocity = self.get_float_parameter(
             'mag_calibration_angular_velocity'
-        ).get_parameter_value().double_value
-        self.mag_calibration_duration_sec = self.get_parameter(
+        )
+        self.mag_calibration_duration_sec = self.get_float_parameter(
             'mag_calibration_duration_sec'
-        ).get_parameter_value().double_value
+        )
         self.mag_calibration_config_file = self.get_parameter(
             'mag_calibration_config_file'
         ).get_parameter_value().string_value
@@ -119,6 +120,19 @@ class MiniBotNode(Node):
         self.read_sensors_thread.start()
 
        
+    def declare_float_parameter(self, name, default_value):
+        self.declare_parameter(
+            name,
+            float(default_value),
+            ParameterDescriptor(dynamic_typing=True),
+        )
+
+    def get_float_parameter(self, name):
+        value = self.get_parameter(name).value
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f'{name} must be numeric, got {value!r}')
+        return float(value)
+
     def pwm_callback(self, msg: Int16MultiArray):
         # Entrada original
         self.left_pwm = np.clip(msg.data[0], -255, 255)
@@ -416,7 +430,15 @@ class MiniBotNode(Node):
         return len(lines)
 
     def format_yaml_float(self, value):
-        return f'{float(value):.6g}'
+        formatted = f'{float(value):.6g}'
+        if 'e' in formatted or 'E' in formatted:
+            mantissa, exponent = formatted.lower().split('e', 1)
+            if '.' not in mantissa:
+                mantissa += '.0'
+            return f'{mantissa}e{exponent}'
+        if '.' not in formatted:
+            formatted += '.0'
+        return formatted
 
     def publish_joint_state(self):
         # Publish joint state velocities (rad/s) to /joint_states

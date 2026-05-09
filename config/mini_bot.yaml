@@ -15,8 +15,8 @@ mini_bot_node:
     mag_x_scale: 1.0
     mag_y_scale: 1.0
     mag_heading_offset_deg: 0.0
-    mag_calibration_angular_velocity: 1.0
-    mag_calibration_duration_sec: 10.0
+    mag_calibration_angular_velocity: 1.25
+    mag_calibration_duration_sec: 15.0
     mag_calibration_config_file: "/home/narcis/ros2_ws/src/mini_bot/config/mini_bot.yaml"
 
 # Parameters for the navigation_node
