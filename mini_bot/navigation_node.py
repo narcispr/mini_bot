@@ -82,8 +82,6 @@ class NavigationNode(Node):
         self.pose.y += self.v * dt * float(np.sin(self.pose.theta))
         if not self.use_external_theta:
             self.pose.theta += self.w * dt
-            if self.pose.theta > 2 * np.pi:
-                self.pose.theta -= 2 * np.pi
 
         self.publish_odometry()
 
@@ -118,14 +116,19 @@ class NavigationNode(Node):
             measured += 360.0
 
         measured_points = np.append(measured_points, measured_points[0] + 360.0)
-        corrected_points = np.append(corrected_points, corrected_points[0] + 360.0)
+        corrected_wrap = 360.0 if corrected_points[-1] >= corrected_points[0] else -360.0
+        corrected_points = np.append(corrected_points, corrected_points[0] + corrected_wrap)
 
         return float(np.interp(measured, measured_points, corrected_points) % 360.0)
 
     def orientation_callback(self, msg):
         corrected_theta_deg = self.calibrate_external_theta(float(msg.data))
-        self.pose.theta = math.radians(corrected_theta_deg)
+        corrected_theta_rad = math.radians(corrected_theta_deg)
+        self.pose.theta += self.shortest_angular_distance(self.pose.theta, corrected_theta_rad)
         self.last_theta_time = self.get_clock().now()
+
+    def shortest_angular_distance(self, from_angle, to_angle):
+        return math.atan2(math.sin(to_angle - from_angle), math.cos(to_angle - from_angle))
 
     def publish_odometry(self):
         now_msg = self.get_clock().now().to_msg()
