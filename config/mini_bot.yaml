@@ -44,14 +44,11 @@ controller_node:
   ros__parameters:
     max_v: 0.5  #m/s
     max_w: 3.14 #rad/s
-    wheel_radius: 0.0325
-    wheel_base: 0.16
     dt: 0.1
-    max_delta_pwm: 25.0
     max_pwm: 255.0
     cmd_vel_timeout: 0.5
     gain_pid: 0.25
-    # PID parameters used by controller_lite_node.py.
+    # PID parameters used by controller_node.py.
     pid_v:
       kp: 1.0
       ki: 0.0
@@ -62,22 +59,16 @@ controller_node:
       ki: 0.0
       kd: 0.0
       integral_max: 0.1
-    v_pid:
-      kp: 0.0
-      ki: 0.0
-      kd: 0.0
-      integral_max: 0.1
-    w_pid:
-      kp: 1.5
-      ki: 0.0
-      kd: 0.2
-      integral_max: 0.1
     angle_pid:
       kp: 10.0
       ki: 0.0
       kd: 0.0
       integral_max: 0.0
-    # LUTs used by controller_lite_node.py. They are flat lists reshaped in the node.
+    max_v_goal: 0.2
+    max_w_goal: 1.0
+    goal_tolerance: 0.1
+    goal_angle_tolerance: 0.3
+    # LUTs used by controller_node.py. They are flat lists reshaped in the node.
     velocity_to_pwm_lut_v:
       - 0.0
       - 0.0
@@ -102,42 +93,3 @@ controller_node:
       - 155.0
       - 4.0
       - 185.0
-    # LUTs used by controller_node.py. They are flat lists reshaped in the node.
-    velocity_to_pwm_lut_left:
-      - -6.0
-      - -255.0
-      - -3.0
-      - -225.0
-      - -2.0
-      - -200.0
-      - -1.0
-      - -100.0
-      - 0.0
-      - 0.0
-      - 1.0
-      - 100.0
-      - 2.5
-      - 200.0
-      - 3.7
-      - 225.0
-      - 7.0
-      - 255.0
-    velocity_to_pwm_lut_right:
-      - -6.0
-      - -255.0
-      - -3.0
-      - -225.0
-      - -2.0
-      - -200.0
-      - -1.0
-      - -100.0
-      - 0.0
-      - 0.0
-      - 1.0
-      - 100.0
-      - 2.5
-      - 200.0
-      - 3.7
-      - 225.0
-      - 7.0
-      - 255.0

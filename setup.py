@@ -25,8 +25,7 @@ setup(
         'console_scripts': [
             'mini_bot_node = mini_bot.mini_bot_node:main',
             'navigation_node = mini_bot.navigation_node:main',
-            'controller_node = mini_bot.controller_node:main',
-            'controller_lite_node = mini_bot.controller_lite_node:main'
+            'controller_node = mini_bot.controller_node:main'
         ],
     },
 )
