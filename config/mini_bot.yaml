@@ -60,12 +60,12 @@ controller_node:
       kd: 0.0
       integral_max: 0.1
     angle_pid:
-      kp: 10.0
+      kp: 0.8
       ki: 0.0
       kd: 0.0
       integral_max: 0.0
     max_v_goal: 0.3
-    max_w_goal: 1.25
+    max_w_goal: 1.15
     goal_tolerance: 0.1
     goal_angle_tolerance: 0.3
     # LUTs used by controller_node.py. They are flat lists reshaped in the node.

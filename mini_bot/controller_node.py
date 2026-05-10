@@ -222,6 +222,13 @@ class ControllerNode(Node):
         self.desired_w = self.angle_pid.update(angle_error, dt)
         self.desired_w = float(np.clip(self.desired_w, -self.max_w_goal, self.max_w_goal))
         self.desired_w = float(np.clip(self.desired_w, -self.max_w, self.max_w))
+        
+        # Enforce minimum speed to allow the robot to move
+        if self.desired_w < 1.1 and self.desired_v == 0.0:
+            self.desired_w = 1.1
+        elif self.desired_w < 1.1 and self.desired_v < 0.25:
+            self.desired_v = 0.25
+
         self.desired_last_time = now
 
     def apply_velocity(self):
